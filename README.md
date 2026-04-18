@@ -1,9 +1,7 @@
 Sendra
-
 Sendra is a cross-currency payment system that allows users to send money in different currencies (GBP, USD, EUR, USDT) and convert it to local currency (TZS) on the receiving side.
 
 Project Overview
-
 The system handles currency conversion using real-time FX rates and uses USDT as a settlement layer for transfers.
 
 How it works
@@ -21,34 +19,10 @@ Flutter (frontend)
 Node.js / Express (backend)
 FX Rate API
 Crypto/USDT API
-Project Structure
-sendra/
- ├── lib/
- ├── backend/
- ├── services/
- ├── models/
- ├── screens/
-Setup
 
-Frontend:
 
-flutter pub get
-flutter run
 
-Backend:
 
-cd backend
-npm install
-npm run dev
-Environment Variables
-FX_API_KEY=
-CRYPTO_API_KEY=
-DATABASE_URL=
-Focus Areas
-FX conversion logic
-Crypto integration
-Backend API development
-Payment flow handling# sendra
 
 A new Flutter project.
 
