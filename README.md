@@ -9,16 +9,6 @@ User sends money in GBP, USD, EUR, or USDT
 If fiat currency is used, it is converted to USDT using FX rates
 USDT is then converted to TZS for the receiver
 If USDT is sent directly, no conversion is needed
-Features
-Multi-currency support
-Real-time FX conversion
-USDT-based settlement
-TZS payout for receivers
-Tech Stack
-Flutter (frontend)
-Node.js / Express (backend)
-FX Rate API
-Crypto/USDT API
 
 
 
