@@ -38,16 +38,20 @@ class AppStrings {
 class AppRates {
   AppRates._();
 
-  static const double gbpToUsdt = 1.27;
-  static const double eurToUsdt = 1.08;
-  static const double usdToUsdt = 1.00;
-  static const double usdtToUsdt = 1.00;
-  static const double tzsToUsdtRate = 1 / 2650.0;
-  static const double usdtToTzs = 2650.0;
-  static const double spread = 0.015;
-  static const double exchangeFeeRate = 0.01;
+  // ── Mutable rate fields ─────────────────────────────────────────────────
+  // These start with safe fallback values (same as before).
+  // ExchangeRateService.applyLiveRates() overwrites them on every
+  // Firestore snapshot so the rest of the app always reads live data.
+  static double gbpToUsdt = 1.27;
+  static double eurToUsdt = 1.08;
+  static double usdToUsdt = 1.00;
+  static double usdtToUsdt = 1.00;
+  static double tzsToUsdtRate = 1 / 2650.0;
+  static double usdtToTzs = 2650.0;
+  static double spread = 0.015;
+  static double exchangeFeeRate = 0.01;
 
-  static const Map<String, double> cryptoPriceUsd = {
+  static Map<String, double> cryptoPriceUsd = {
     'BTC': 65000.0,
     'ETH': 3200.0,
     'SOL': 140.0,
@@ -57,14 +61,16 @@ class AppRates {
     'DOGE': 0.16,
   };
 
-  static const Map<String, double> _toUsdtMid = {
-    'GBP': gbpToUsdt,
-    'EUR': eurToUsdt,
-    'USD': usdToUsdt,
-    'USDT': usdtToUsdt,
-    'TZS': tzsToUsdtRate,
+  // Internal lookup — rebuilt by applyLiveRates() on every update
+  static Map<String, double> _toUsdtMid = {
+    'GBP': 1.27,
+    'EUR': 1.08,
+    'USD': 1.00,
+    'USDT': 1.00,
+    'TZS': 1 / 2650.0,
   };
 
+  // ── Static maps that never change ──────────────────────────────────────
   static const Map<String, String> currencyFlags = {
     'GBP': '🇬🇧',
     'EUR': '🇪🇺',
@@ -110,6 +116,42 @@ class AppRates {
     'DOGE': 'Dogecoin',
   };
 
+  // ── Live rate injection ─────────────────────────────────────────────────
+  // Called by ExchangeRateService whenever Firestore emits a new snapshot.
+  // All existing methods below automatically use the updated values —
+  // no changes needed anywhere else in the app.
+  static void applyLiveRates({
+    required double newUsdtToTzs,
+    required Map<String, double> newFiat,
+    required Map<String, double> newCrypto,
+    required double newSpread,
+    required double newFeeRate,
+  }) {
+    usdtToTzs = newUsdtToTzs;
+    tzsToUsdtRate = 1 / newUsdtToTzs;
+
+    if (newFiat.containsKey('GBP')) gbpToUsdt = newFiat['GBP']!;
+    if (newFiat.containsKey('EUR')) eurToUsdt = newFiat['EUR']!;
+    if (newFiat.containsKey('USD')) usdToUsdt = newFiat['USD']!;
+
+    spread = newSpread;
+    exchangeFeeRate = newFeeRate;
+
+    // Rebuild the internal lookup so convert() picks up fresh rates instantly
+    _toUsdtMid = {
+      'GBP': gbpToUsdt,
+      'EUR': eurToUsdt,
+      'USD': usdToUsdt,
+      'USDT': 1.0,
+      'TZS': tzsToUsdtRate,
+    };
+
+    if (newCrypto.isNotEmpty) {
+      cryptoPriceUsd = Map<String, double>.from(newCrypto);
+    }
+  }
+
+  // ── Helpers — unchanged, now read live values automatically ────────────
   static bool isCrypto(String c) => cryptoPriceUsd.containsKey(c);
   static bool isFiat(String c) => _toUsdtMid.containsKey(c);
 
@@ -146,14 +188,16 @@ class AppRates {
       usdtToTzsAmount(toUsdt(currency, amount));
 
   static String tickerLabel(String currency) {
-    if (currency == 'USDT') return '1 USDT = 2,650 TZS';
+    if (currency == 'USDT')
+      return '1 USDT = ${usdtToTzs.toStringAsFixed(0)} TZS';
     return '1 $currency ≈ ${toTzs(currency, 1.0).toStringAsFixed(0)} TZS';
   }
 
   static String rateLabel(String currency) {
     final usdt = toUsdt(currency, 1.0).toStringAsFixed(4);
     final tzs = toTzs(currency, 1.0).toStringAsFixed(0);
-    return '1 $currency → $usdt USDT → $tzs TZS  (1.5% spread)';
+    final pct = (spread * 100).toStringAsFixed(1);
+    return '1 $currency → $usdt USDT → $tzs TZS  ($pct% spread)';
   }
 }
 

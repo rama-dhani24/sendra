@@ -4,22 +4,28 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/firebase_options.dart';
 import 'package:sendra/screens/login_page.dart';
+import 'package:sendra/services/exchange_rate_service.dart';
 
 void main() async {
   // 1. Ensure bindings are initialized first
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // 2. Initialize Firebase with the generated options
+    // 2. Initialize Firebase
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // 3. Start listening to live exchange rates from Firestore
+    // AppRates fields will be updated automatically whenever
+    // the Cloud Function writes new rates (every 30 min).
+    ExchangeRateService.instance.init();
   } catch (e) {
-    debugPrint("Firebase Initialization Error: $e");
-    // Optionally: show a "Service Unavailable" screen here
+    debugPrint('Firebase Initialization Error: $e');
+    // App continues with AppRates fallback values if Firebase fails
   }
 
-  // 3. UI Overlay settings
+  // 4. UI overlay settings
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -29,7 +35,7 @@ void main() async {
     ),
   );
 
-  // 4. Lock orientation and THEN run the app
+  // 5. Lock orientation and run the app
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]).then((_) {
@@ -45,8 +51,7 @@ class SendraApp extends StatelessWidget {
     return MaterialApp(
       title: 'Sendra',
       debugShowCheckedModeBanner: false,
-      theme: STheme
-          .dark, // Ensure STheme.dark doesn't conflict with SystemUiOverlayStyle
+      theme: STheme.dark,
       home: const LoginPage(),
     );
   }
