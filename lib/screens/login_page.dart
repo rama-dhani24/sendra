@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
 import 'package:sendra/screens/home_screen.dart';
@@ -46,15 +47,15 @@ class _LoginPageState extends State<LoginPage>
     super.dispose();
   }
 
-  // ── Login logic ────────────────────────────────────────────────────────────
+  // Must match _authPassword() in signup_page.dart
+  String _authPassword(String pin) => '${pin}_sendra';
+
   Future<void> _login() async {
-    // Guard against double-tap while loading
     if (_loading) return;
 
     final phone = _phoneCtrl.text.replaceAll(RegExp(r'\D'), '').trim();
     final pin = _pinCtrl.text.trim();
 
-    // ── Client-side validation BEFORE showing loader ───────────────────────
     if (phone.isEmpty || pin.isEmpty) {
       setState(() => _errorMessage = 'Please enter your phone number and PIN.');
       return;
@@ -71,53 +72,63 @@ class _LoginPageState extends State<LoginPage>
       return;
     }
 
-    // ── Start loading ──────────────────────────────────────────────────────
     setState(() {
       _errorMessage = '';
       _loading = true;
     });
 
     try {
+      // ── Step 1: Firebase Auth sign-in ────────────────────────────────────
+      final email = '$phone@sendra.app';
+      final password = _authPassword(pin);
+
+      UserCredential credential;
+      try {
+        credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } on FirebaseAuthException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage =
+              (e.code == 'wrong-password' || e.code == 'invalid-credential')
+              ? 'Incorrect PIN. Please try again.'
+              : e.code == 'user-not-found'
+              ? 'No account found with this phone number.'
+              : 'Login failed. Please try again.';
+          _loading = false;
+        });
+        return;
+      }
+
+      // ── Step 2: Load user profile from Firestore ─────────────────────────
+      final uid = credential.user!.uid;
       final snap = await FirebaseFirestore.instance
           .collection(FSKeys.usersCollection)
-          .where(FSKeys.phone, isEqualTo: phone)
-          .limit(1)
+          .doc(uid)
           .get();
 
       if (!mounted) return;
 
-      if (snap.docs.isEmpty) {
+      if (!snap.exists) {
+        await FirebaseAuth.instance.signOut();
         setState(() {
-          _errorMessage = 'No account found with this phone number.';
+          _errorMessage = 'Account data not found. Please sign up again.';
           _loading = false;
         });
         return;
       }
 
-      final data = snap.docs.first.data();
-
-      if (data[FSKeys.pin] != pin) {
-        setState(() {
-          _errorMessage = 'Incorrect PIN. Please try again.';
-          _loading = false;
-        });
-        return;
-      }
-
-      if (!mounted) return;
-
-      // ── Success: reset loading then navigate ───────────────────────────
+      final data = snap.data()!;
       setState(() => _loading = false);
-
-      // Small delay so Flutter settles the state before navigation
       await Future.delayed(const Duration(milliseconds: 100));
-
       if (!mounted) return;
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => HomeScreen(
-            userId: snap.docs.first.id,
+            userId: uid,
             userName: data[FSKeys.fullName] ?? '',
             accNumber: data[FSKeys.accNumber] ?? '',
             phone: data[FSKeys.phone] ?? '',
@@ -125,53 +136,45 @@ class _LoginPageState extends State<LoginPage>
         ),
       );
     } on FirebaseException catch (e) {
-      if (mounted) {
+      if (mounted)
         setState(() {
-          _errorMessage = _friendlyFirestoreMessage(e);
+          _errorMessage = _friendlyMessage(e);
           _loading = false;
         });
-      }
     } on TimeoutException {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _errorMessage = 'Login timed out. Please try again.';
           _loading = false;
         });
-      }
     } catch (_) {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _errorMessage = 'Unable to log in right now.';
           _loading = false;
         });
-      }
     }
   }
 
-  String _friendlyFirestoreMessage(FirebaseException e) {
+  String _friendlyMessage(FirebaseException e) {
     switch (e.code) {
       case 'permission-denied':
-        return 'Database permission denied. Please check Firestore rules.';
+        return 'Permission denied. Please try again.';
       case 'unavailable':
-        return 'Firebase is temporarily unavailable. Please try again.';
+        return 'Firebase is temporarily unavailable.';
       case 'deadline-exceeded':
         return 'The request took too long. Please try again.';
-      case 'failed-precondition':
-        return e.message ??
-            'Firebase needs additional setup before login can work.';
       default:
         return e.message ?? 'A database error occurred during login.';
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SColors.bg,
       body: Stack(
         children: [
-          // ── Main content ─────────────────────────────────────────────────
           FadeTransition(
             opacity: _fadeAnim,
             child: SafeArea(
@@ -235,8 +238,6 @@ class _LoginPageState extends State<LoginPage>
               ),
             ),
           ),
-
-          // ── Loading overlay ───────────────────────────────────────────────
           if (_loading)
             Positioned.fill(
               child: AbsorbPointer(
@@ -270,7 +271,6 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  // ── Heading section ────────────────────────────────────────────────────────
   Widget _buildHeading() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,7 +295,6 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  // ── Phone field ────────────────────────────────────────────────────────────
   Widget _buildPhoneField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -346,7 +345,6 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  // ── PIN field ──────────────────────────────────────────────────────────────
   Widget _buildPinField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,11 +391,10 @@ class _LoginPageState extends State<LoginPage>
   }
 }
 
-// ─── Shared widgets ────────────────────────────────────────────────────────
+// ─── Shared widgets ──────────────────────────────────────────────────────────
 
 class _SendraLogo extends StatelessWidget {
   const _SendraLogo();
-
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -434,7 +431,6 @@ class _SendraLogo extends StatelessWidget {
 class _ErrorBox extends StatelessWidget {
   final String message;
   const _ErrorBox({required this.message});
-
   @override
   Widget build(BuildContext context) {
     return Container(

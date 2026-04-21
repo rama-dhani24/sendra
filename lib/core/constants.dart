@@ -127,6 +127,10 @@ class AppRates {
     required double newSpread,
     required double newFeeRate,
   }) {
+    // ignore: avoid_print
+    print(
+      '✅ Live rates loaded: 1 USDT = $newUsdtToTzs TZS | GBP=${newFiat['GBP']?.toStringAsFixed(4)} | spread=$newSpread',
+    );
     usdtToTzs = newUsdtToTzs;
     tzsToUsdtRate = 1 / newUsdtToTzs;
 

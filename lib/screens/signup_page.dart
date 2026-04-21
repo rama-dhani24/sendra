@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
 import 'package:sendra/screens/login_page.dart';
@@ -17,7 +18,6 @@ class SignUpPage extends StatefulWidget {
 
 class _SignUpPageState extends State<SignUpPage>
     with SingleTickerProviderStateMixin {
-  // ── Variables & Controllers ──────────────────────────────────────────────
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -56,7 +56,13 @@ class _SignUpPageState extends State<SignUpPage>
     super.dispose();
   }
 
-  // ── Step 1: validate and check phone uniqueness ────────────────────────────
+  String get _normalizedPhone =>
+      _phoneCtrl.text.replaceAll(RegExp(r'\D'), '').trim();
+
+  // Firebase Auth requires min 6 chars — pad PIN consistently in both files
+  String _authPassword(String pin) => '${pin}_sendra';
+
+  // ── Step 1: validate + check phone uniqueness ─────────────────────────────
   Future<void> _proceedToPin() async {
     if (_loading) return;
 
@@ -83,9 +89,8 @@ class _SignUpPageState extends State<SignUpPage>
           .collection(FSKeys.usersCollection)
           .where(FSKeys.phone, isEqualTo: phone)
           .limit(1)
-          .get();
-
-      final reservedAccNumber = await _generateUniqueAccNumber();
+          .get()
+          .timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
 
@@ -97,39 +102,45 @@ class _SignUpPageState extends State<SignUpPage>
         return;
       }
 
+      final accNumber = await _generateUniqueAccNumber();
+      if (!mounted) return;
+
       setState(() {
         _step = 1;
-        _generatedAccNumber = reservedAccNumber;
+        _generatedAccNumber = accNumber;
         _loading = false;
       });
       _animCtrl
         ..reset()
         ..forward();
-    } on FirebaseException catch (e) {
-      if (mounted) {
+    } on _SignUpFlowException catch (e) {
+      if (mounted)
         setState(() {
-          _errorMessage = _friendlyFirestoreMessage(e);
+          _errorMessage = e.message;
           _loading = false;
         });
-      }
+    } on FirebaseException catch (e) {
+      if (mounted)
+        setState(() {
+          _errorMessage = _friendlyMessage(e);
+          _loading = false;
+        });
     } on TimeoutException {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _errorMessage = 'Request timed out. Please try again.';
           _loading = false;
         });
-      }
     } catch (_) {
-      if (mounted) {
+      if (mounted)
         setState(() {
-          _errorMessage = 'Unable to continue right now. Please try again.';
+          _errorMessage = 'Unable to continue right now.';
           _loading = false;
         });
-      }
     }
   }
 
-  // ── Step 2: create account ─────────────────────────────────────────────────
+  // ── Step 2: create Firebase Auth account + Firestore document ─────────────
   Future<void> _createAccount() async {
     if (_loading) return;
 
@@ -151,40 +162,36 @@ class _SignUpPageState extends State<SignUpPage>
       _loading = true;
     });
 
+    UserCredential? credential;
+
     try {
       final firstName = _firstNameCtrl.text.trim();
       final lastName = _lastNameCtrl.text.trim();
       final accNumber = _generatedAccNumber.isNotEmpty
           ? _generatedAccNumber
           : await _generateUniqueAccNumber();
-      final users = FirebaseFirestore.instance.collection(FSKeys.usersCollection);
-      final userDoc = users.doc(phone);
 
-      final existingPhone = await users
-          .where(FSKeys.phone, isEqualTo: phone)
-          .limit(1)
-          .get()
-          .timeout(const Duration(seconds: 15));
+      final email = '$phone@sendra.app';
+      final password = _authPassword(pin);
 
-      if (existingPhone.docs.any((doc) => doc.id != userDoc.id)) {
-        throw const _SignUpFlowException(
-          'This phone number is already registered.',
+      try {
+        credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } on FirebaseAuthException catch (e) {
+        throw _SignUpFlowException(
+          e.code == 'email-already-in-use'
+              ? 'This phone number is already registered.'
+              : 'Could not create account: ${e.message}',
         );
       }
 
-      final existingAcc = await users
-          .where(FSKeys.accNumber, isEqualTo: accNumber)
-          .limit(1)
-          .get()
-          .timeout(const Duration(seconds: 15));
+      final uid = credential.user!.uid;
 
-      if (existingAcc.docs.any((doc) => doc.id != userDoc.id)) {
-        throw const _SignUpFlowException(
-          'That Sendra ID was just taken. Please tap Create Account again.',
-        );
-      }
-
-      await userDoc
+      await FirebaseFirestore.instance
+          .collection(FSKeys.usersCollection)
+          .doc(uid)
           .set({
             FSKeys.firstName: firstName,
             FSKeys.lastName: lastName,
@@ -198,39 +205,42 @@ class _SignUpPageState extends State<SignUpPage>
           })
           .timeout(const Duration(seconds: 15));
 
+      await FirebaseAuth.instance.signOut();
+
       if (!mounted) return;
       setState(() => _loading = false);
       _showSuccessDialog(accNumber);
     } on _SignUpFlowException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _errorMessage = e.message;
-        _generatedAccNumber = '';
-      });
+      await credential?.user?.delete();
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _errorMessage = e.message;
+          _generatedAccNumber = '';
+        });
     } on FirebaseException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _errorMessage = _friendlyFirestoreMessage(e);
-      });
+      await credential?.user?.delete();
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _errorMessage = _friendlyMessage(e);
+        });
     } on TimeoutException {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _errorMessage = 'Signup timed out. Please check your connection.';
-      });
+      await credential?.user?.delete();
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _errorMessage = 'Signup timed out. Check your connection.';
+        });
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _errorMessage = 'Unable to create the account right now.';
-      });
+      await credential?.user?.delete();
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _errorMessage = 'Unable to create the account right now.';
+        });
     }
   }
-
-  String get _normalizedPhone =>
-      _phoneCtrl.text.replaceAll(RegExp(r'\D'), '').trim();
 
   Future<String> _generateUniqueAccNumber() async {
     final users = FirebaseFirestore.instance.collection(FSKeys.usersCollection);
@@ -243,28 +253,23 @@ class _SignUpPageState extends State<SignUpPage>
           .limit(1)
           .get()
           .timeout(const Duration(seconds: 15));
-
       if (snap.docs.isEmpty) return candidate;
     }
-
     throw const _SignUpFlowException(
       'Could not reserve a Sendra ID. Please try again.',
     );
   }
 
-  String _friendlyFirestoreMessage(FirebaseException e) {
+  String _friendlyMessage(FirebaseException e) {
     switch (e.code) {
       case 'permission-denied':
-        return 'Database permission denied. Please check Firestore rules.';
+        return 'Permission denied. Please try again.';
       case 'unavailable':
-        return 'Firebase is temporarily unavailable. Please try again.';
+        return 'Firebase is temporarily unavailable.';
       case 'deadline-exceeded':
-        return 'The request took too long. Please try again.';
-      case 'failed-precondition':
-        return e.message ??
-            'Firebase needs additional setup before signup can work.';
+        return 'Request took too long. Please try again.';
       default:
-        return e.message ?? 'A database error occurred during signup.';
+        return e.message ?? 'A database error occurred.';
     }
   }
 
@@ -294,7 +299,12 @@ class _SignUpPageState extends State<SignUpPage>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
+              const Text(
+                'Your Sendra ID',
+                style: TextStyle(color: SColors.textSub, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
               Text(
                 accNumber,
                 style: const TextStyle(
@@ -363,6 +373,28 @@ class _SignUpPageState extends State<SignUpPage>
                         ),
                       ),
                     ),
+                    if (_step == 0) ...[
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(AppStrings.alreadyHave, style: SText.caption),
+                          GestureDetector(
+                            onTap: _loading
+                                ? null
+                                : () => Navigator.of(context).pushReplacement(
+                                    MaterialPageRoute(
+                                      builder: (_) => const LoginPage(),
+                                    ),
+                                  ),
+                            child: Text(
+                              AppStrings.logInLink,
+                              style: SText.goldAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -381,8 +413,6 @@ class _SignUpPageState extends State<SignUpPage>
       ),
     );
   }
-
-  // ── Helper Widgets ─────────────────────────────────────────────────────────
 
   Widget _buildStepIndicator() {
     return Column(
@@ -431,15 +461,26 @@ class _SignUpPageState extends State<SignUpPage>
     return Column(
       children: [
         Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: SDecor.goldGlow,
-          child: Text(
-            'Acc: $_generatedAccNumber',
-            style: const TextStyle(
-              color: SColors.gold,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+          child: Column(
+            children: [
+              const Text(
+                'Your Sendra ID',
+                style: TextStyle(color: SColors.textSub, fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _generatedAccNumber.isNotEmpty ? _generatedAccNumber : '—',
+                style: const TextStyle(
+                  color: SColors.gold,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 4,
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -464,8 +505,8 @@ class _SignUpPageState extends State<SignUpPage>
   }
 }
 
-// ── Shared UI Components (Paste your existing _StepDot, _InputField, etc. here) ──
-// (Keep the reusable widget classes from your original code below this line)
+// ─── Reusable widgets ────────────────────────────────────────────────────────
+
 class _StepDot extends StatelessWidget {
   final int index, current;
   const _StepDot({required this.index, required this.current});
@@ -596,7 +637,11 @@ class _PinField extends StatelessWidget {
           decoration: SDecor.textInput(
             hint: hint,
             suffix: IconButton(
-              icon: Icon(hidden ? Icons.visibility_off : Icons.visibility),
+              icon: Icon(
+                hidden ? Icons.visibility_off : Icons.visibility,
+                color: SColors.textDim,
+                size: 18,
+              ),
               onPressed: onToggle,
             ),
           ),
@@ -617,25 +662,29 @@ class _SendraLogo extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     children: [
       Container(
-        width: 40,
-        height: 40,
+        width: 42,
+        height: 42,
         decoration: BoxDecoration(
-          color: SColors.gold,
-          borderRadius: BorderRadius.circular(8),
+          gradient: const LinearGradient(
+            colors: [SColors.gold, SColors.goldDark],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: const Center(
-          child: Text('S', style: TextStyle(fontWeight: FontWeight.bold)),
+          child: Text(
+            AppStrings.logoLetter,
+            style: TextStyle(
+              color: SColors.navy,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
       ),
       const SizedBox(width: 12),
-      const Text(
-        'Sendra',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      Text(AppStrings.appName, style: SText.appBarTitle),
     ],
   );
 }
@@ -646,17 +695,12 @@ class _ErrorBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
-    color: Colors.red.withOpacity(0.1),
+    decoration: SDecor.errorBox,
     child: Row(
       children: [
-        const Icon(Icons.error, color: Colors.red, size: 16),
+        const Icon(Icons.error_outline, color: SColors.red, size: 16),
         const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(color: Colors.red, fontSize: 12),
-          ),
-        ),
+        Expanded(child: Text(message, style: SText.errorText)),
       ],
     ),
   );
