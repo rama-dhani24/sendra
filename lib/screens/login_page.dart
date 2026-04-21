@@ -136,23 +136,26 @@ class _LoginPageState extends State<LoginPage>
         ),
       );
     } on FirebaseException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _errorMessage = _friendlyMessage(e);
           _loading = false;
         });
+      }
     } on TimeoutException {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _errorMessage = 'Login timed out. Please try again.';
           _loading = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _errorMessage = 'Unable to log in right now.';
           _loading = false;
         });
+      }
     }
   }
 
