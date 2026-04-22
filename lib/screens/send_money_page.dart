@@ -1,14 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/services/exchange_rate_service.dart';
 import 'package:sendra/services/transaction_service.dart';
 import 'package:sendra/screens/receipt_screen.dart';
 
 class SendMoneyPage extends StatefulWidget {
   final UserLookup sender;
-
   const SendMoneyPage({super.key, required this.sender});
 
   @override
@@ -17,12 +18,29 @@ class SendMoneyPage extends StatefulWidget {
 
 class _SendMoneyPageState extends State<SendMoneyPage>
     with SingleTickerProviderStateMixin {
-  // ── Step: 0 = enter acc + amount, 1 = preview, 2 = confirm PIN ──────────
+  // ── Step: 0 = enter details, 1 = preview, 2 = confirm PIN ───────────────
   int _step = 0;
 
   final _accCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _pinCtrl = TextEditingController();
+
+  // Sending currencies per the plan
+  static const _currencies = ['GBP', 'EUR', 'USD', 'USDT'];
+  static const _currencyFlags = {
+    'GBP': '🇬🇧',
+    'EUR': '🇪🇺',
+    'USD': '🇺🇸',
+    'USDT': '🔷',
+  };
+  static const _currencySymbols = {
+    'GBP': '£',
+    'EUR': '€',
+    'USD': '\$',
+    'USDT': '₮',
+  };
+
+  String _selectedCurrency = 'GBP'; // default sending currency
 
   bool _searching = false;
   bool _sending = false;
@@ -53,23 +71,76 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     super.dispose();
   }
 
-  // ── Derived values ─────────────────────────────────────────────────────────
-  double get _amount => double.tryParse(_amountCtrl.text.trim()) ?? 0;
-  double get _fee =>
-      double.parse((_amount * AppFees.transactionFeeRate).toStringAsFixed(2));
-  double get _totalDebit => _amount + _fee;
+  // ── Derived conversion values (live) ──────────────────────────────────────
+  double get _sentAmount => double.tryParse(_amountCtrl.text.trim()) ?? 0;
 
-  // ── Step 0 → 1: look up receiver ──────────────────────────────────────────
+  // How much TZS the receiver gets (after spread, before fee)
+  double get _tzsReceived {
+    if (_sentAmount <= 0) return 0;
+    final rates = ExchangeRateService.instance.latest;
+    if (rates != null) return rates.toTzs(_selectedCurrency, _sentAmount);
+    return AppRates.toTzs(_selectedCurrency, _sentAmount);
+  }
+
+  // USDT equivalent (for display and storage)
+  double get _usdtAmount {
+    if (_sentAmount <= 0) return 0;
+    final rates = ExchangeRateService.instance.latest;
+    final spread = rates?.spread ?? AppRates.spread;
+    final usdtToTzs = rates?.usdtToTzs ?? AppRates.usdtToTzs;
+    if (_selectedCurrency == 'TZS') return _sentAmount / usdtToTzs;
+    if (_selectedCurrency == 'USDT') return _sentAmount * (1 - spread);
+    double fiatRate;
+    if (rates != null && rates.fiat.containsKey(_selectedCurrency)) {
+      fiatRate = rates.fiat[_selectedCurrency]!;
+    } else {
+      switch (_selectedCurrency) {
+        case 'GBP':
+          fiatRate = AppRates.gbpToUsdt;
+          break;
+        case 'EUR':
+          fiatRate = AppRates.eurToUsdt;
+          break;
+        default:
+          fiatRate = AppRates.usdToUsdt;
+      }
+    }
+    return _sentAmount * fiatRate * (1 - spread);
+  }
+
+  // Fee is 1% of TZS amount
+  double get _feeTzs => double.parse(
+    (_tzsReceived * AppFees.transactionFeeRate).toStringAsFixed(2),
+  );
+
+  // Total TZS debited from sender's TZS balance
+  double get _totalDebitTzs => _tzsReceived + _feeTzs;
+
+  // Spread % for display
+  double get _spreadPct {
+    final rates = ExchangeRateService.instance.latest;
+    return (rates?.spread ?? AppRates.spread) * 100;
+  }
+
+  // Live rate label
+  String get _rateLabel {
+    final rates = ExchangeRateService.instance.latest;
+    final tzs = rates != null
+        ? rates.toTzs(_selectedCurrency, 1.0)
+        : AppRates.toTzs(_selectedCurrency, 1.0);
+    return '1 $_selectedCurrency ≈ TZS ${Validators.formatNumber(tzs)} '
+        '(${_spreadPct.toStringAsFixed(1)}% spread applied)';
+  }
+
+  // ── Step 0 → 1: look up receiver ─────────────────────────────────────────
   Future<void> _lookupReceiver() async {
-    setState(() {
-      _error = '';
-    });
+    setState(() => _error = '');
 
     final acc = _accCtrl.text.trim();
-    final amount = _amount;
+    final amount = _sentAmount;
 
     if (acc.isEmpty) {
-      setState(() => _error = 'Enter the recipient\'s account number.');
+      setState(() => _error = 'Enter the recipient\'s Sendra ID.');
       return;
     }
     if (acc == widget.sender.accNumber) {
@@ -80,11 +151,11 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       setState(() => _error = 'Enter a valid amount.');
       return;
     }
-    if (_totalDebit > widget.sender.balanceTzs) {
+    if (_totalDebitTzs > widget.sender.balanceTzs) {
       setState(
         () => _error =
-            'Insufficient balance. You need TZS ${Validators.formatNumber(_totalDebit)} '
-            '(incl. TZS ${Validators.formatNumber(_fee)} fee).',
+            'Insufficient TZS balance. You need TZS ${Validators.formatNumber(_totalDebitTzs)} '
+            '(incl. TZS ${Validators.formatNumber(_feeTzs)} fee).',
       );
       return;
     }
@@ -95,7 +166,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       final found = await TransactionService.findUserByAccNumber(acc);
       if (found == null) {
         setState(() {
-          _error = 'No account found with number "$acc".';
+          _error = 'No account found with ID "$acc".';
           _searching = false;
         });
         return;
@@ -116,7 +187,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     }
   }
 
-  // ── Step 1 → 2: go to PIN confirm ─────────────────────────────────────────
+  // ── Step 1 → 2 ───────────────────────────────────────────────────────────
   void _goToConfirm() {
     setState(() {
       _step = 2;
@@ -127,7 +198,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       ..forward();
   }
 
-  // ── Step 2: verify PIN and execute ────────────────────────────────────────
+  // ── Step 2: verify PIN via Firebase Auth + execute ────────────────────────
   Future<void> _confirmAndSend() async {
     setState(() => _error = '');
 
@@ -137,16 +208,24 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       return;
     }
 
-    // Verify PIN against Firestore
     setState(() => _sending = true);
 
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection(FSKeys.usersCollection)
-          .doc(widget.sender.docId)
-          .get();
+      // Re-authenticate with Firebase Auth to verify PIN
+      // This is more secure than reading the PIN from Firestore
+      final user = FirebaseAuth.instance.currentUser;
+      final phone = widget.sender.phone;
+      final email = '$phone@sendra.app';
 
-      if (snap.data()?[FSKeys.pin] != pin) {
+      if (user == null) throw 'Session expired. Please log in again.';
+
+      try {
+        final credential = EmailAuthProvider.credential(
+          email: email,
+          password: '${pin}_sendra',
+        );
+        await user.reauthenticateWithCredential(credential);
+      } on FirebaseAuthException {
         setState(() {
           _error = 'Incorrect PIN. Please try again.';
           _sending = false;
@@ -154,12 +233,12 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         return;
       }
 
-      // ✅ FIXED: use correct parameter names matching TransactionService.sendMoney()
+      // PIN verified — execute the transaction
       final tx = await TransactionService.sendMoney(
         sender: widget.sender,
         receiver: _receiver!,
-        currency: 'TZS',
-        sentAmount: _amount,
+        currency: _selectedCurrency,
+        sentAmount: _sentAmount,
       );
 
       if (!mounted) return;
@@ -176,7 +255,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -243,11 +322,10 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  // ── Step indicator ─────────────────────────────────────────────────────────
+  // ── Step indicator ────────────────────────────────────────────────────────
   Widget _buildStepIndicator() {
-    final labels = ['Recipient', 'Preview', 'Confirm'];
     return Row(
-      children: List.generate(labels.length * 2 - 1, (i) {
+      children: List.generate(5, (i) {
         if (i.isOdd) {
           return Expanded(
             child: Container(
@@ -287,12 +365,14 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  // ── Step 0: enter acc number + amount ────────────────────────────────────
+  // ── Step 0: currency + amount + recipient ─────────────────────────────────
   Widget _buildStep0() {
+    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Sender balance hint
+        // Sender TZS balance
         Container(
           padding: const EdgeInsets.all(14),
           decoration: SDecor.card,
@@ -331,8 +411,154 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 24),
 
-        // Recipient acc number
-        Text('Recipient Account Number', style: SText.label),
+        // ── Currency selector ─────────────────────────────────────────────
+        Text('Sending Currency', style: SText.label),
+        const SizedBox(height: 10),
+        Row(
+          children: _currencies.map((c) {
+            final selected = c == _selectedCurrency;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() {
+                  _selectedCurrency = c;
+                }),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? SColors.gold.withOpacity(0.15)
+                        : SColors.navyCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected ? SColors.gold : SColors.navyLight,
+                      width: selected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        _currencyFlags[c] ?? '',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        c,
+                        style: TextStyle(
+                          color: selected ? SColors.gold : SColors.textSub,
+                          fontSize: 11,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 8),
+        // Live rate for selected currency
+        Text(_rateLabel, style: SText.tiny),
+        const SizedBox(height: 20),
+
+        // ── Amount input ──────────────────────────────────────────────────
+        Text('Amount ($symbol)', style: SText.label),
+        const SizedBox(height: 8),
+        Container(
+          decoration: SDecor.inputField,
+          child: TextField(
+            controller: _amountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,6}')),
+            ],
+            onChanged: (_) => setState(() {}),
+            style: const TextStyle(
+              color: SColors.textPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: SDecor.textInput(
+              hint: '0',
+              prefixText: '$symbol  ',
+              prefixStyle: const TextStyle(
+                color: SColors.gold,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+
+        // ── Live conversion preview ───────────────────────────────────────
+        if (_sentAmount > 0) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: SColors.navyCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: SColors.navyLight),
+            ),
+            child: Column(
+              children: [
+                // Conversion path
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.arrow_downward_rounded,
+                      color: SColors.green,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text('Conversion breakdown', style: SText.tiny),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (_selectedCurrency != 'USDT') ...[
+                  _convRow(
+                    '$_selectedCurrency → USDT',
+                    '≈ ${Validators.formatUsdt(_usdtAmount)} USDT',
+                    SColors.textSub,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                _convRow(
+                  'USDT → TZS',
+                  'TZS ${Validators.formatNumber(_tzsReceived)}',
+                  SColors.green,
+                ),
+                const Divider(color: SColors.navyLight, height: 20),
+                _convRow(
+                  'Fee (1%)',
+                  '− TZS ${Validators.formatNumber(_feeTzs)}',
+                  SColors.red,
+                ),
+                const Divider(color: SColors.navyLight, height: 20),
+                _convRow(
+                  'Recipient gets',
+                  'TZS ${Validators.formatNumber(_tzsReceived)}',
+                  SColors.green,
+                  bold: true,
+                ),
+                _convRow(
+                  'Total deducted',
+                  'TZS ${Validators.formatNumber(_totalDebitTzs)}',
+                  SColors.textPrimary,
+                  bold: true,
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 24),
+
+        // ── Recipient account ─────────────────────────────────────────────
+        Text('Recipient Sendra ID', style: SText.label),
         const SizedBox(height: 8),
         Container(
           decoration: SDecor.inputField,
@@ -361,88 +587,28 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 6),
         Text('5-digit Sendra ID of the recipient', style: SText.tiny),
-        const SizedBox(height: 20),
+      ],
+    );
+  }
 
-        // Amount
-        Text('Amount (TZS)', style: SText.label),
-        const SizedBox(height: 8),
-        Container(
-          decoration: SDecor.inputField,
-          child: TextField(
-            controller: _amountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-            ],
-            onChanged: (_) => setState(() {}),
-            style: const TextStyle(
-              color: SColors.textPrimary,
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ),
-            decoration: SDecor.textInput(
-              hint: '0',
-              prefixText: 'TZS  ',
-              prefixStyle: const TextStyle(
-                color: SColors.gold,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+  Widget _convRow(
+    String label,
+    String value,
+    Color valueColor, {
+    bool bold = false,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: SText.caption),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: bold ? 14 : 13,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
           ),
         ),
-
-        // Live fee preview
-        if (_amount > 0) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: SColors.navyCard,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Fee (1%)', style: SText.caption),
-                Text('Recipient gets', style: SText.caption),
-                Text('Total deducted', style: SText.caption),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'TZS ${Validators.formatNumber(_fee)}',
-                  style: const TextStyle(
-                    color: SColors.red,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  'TZS ${Validators.formatNumber(_amount)}',
-                  style: const TextStyle(
-                    color: SColors.green,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  'TZS ${Validators.formatNumber(_totalDebit)}',
-                  style: const TextStyle(
-                    color: SColors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -450,6 +616,9 @@ class _SendMoneyPageState extends State<SendMoneyPage>
   // ── Step 1: preview ───────────────────────────────────────────────────────
   Widget _buildStep1() {
     final r = _receiver!;
+    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
+    final flag = _currencyFlags[_selectedCurrency] ?? '';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -459,7 +628,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           decoration: SDecor.balanceCard,
           child: Column(
             children: [
-              // Avatar
               Container(
                 width: 60,
                 height: 60,
@@ -501,30 +669,50 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 20),
 
-        // Breakdown
+        // Full breakdown matching the plan
         _previewRow(
           'You send',
-          'TZS ${Validators.formatNumber(_amount)}',
+          '$flag $symbol ${_sentAmount.toStringAsFixed(_selectedCurrency == 'USDT' ? 2 : 4)} $_selectedCurrency',
           SColors.textPrimary,
+        ),
+        _divider(),
+        if (_selectedCurrency != 'USDT') ...[
+          _previewRow(
+            'Converted to USDT',
+            '≈ ${Validators.formatUsdt(_usdtAmount)} USDT',
+            SColors.textSub,
+          ),
+          _divider(),
+        ],
+        _previewRow(
+          'Converted to TZS',
+          'TZS ${Validators.formatNumber(_tzsReceived)}',
+          SColors.textPrimary,
+        ),
+        _divider(),
+        _previewRow(
+          'Spread applied',
+          '${_spreadPct.toStringAsFixed(1)}%',
+          SColors.textSub,
         ),
         _divider(),
         _previewRow(
           'Transaction fee (1%)',
-          'TZS ${Validators.formatNumber(_fee)}',
+          '− TZS ${Validators.formatNumber(_feeTzs)}',
           SColors.red,
         ),
         _divider(),
         _previewRow(
-          'Total debited',
-          'TZS ${Validators.formatNumber(_totalDebit)}',
-          SColors.textPrimary,
+          'Recipient gets',
+          'TZS ${Validators.formatNumber(_tzsReceived)}',
+          SColors.green,
           bold: true,
         ),
         _divider(),
         _previewRow(
-          'Recipient gets',
-          'TZS ${Validators.formatNumber(_amount)}',
-          SColors.green,
+          'Total debited from your balance',
+          'TZS ${Validators.formatNumber(_totalDebitTzs)}',
+          SColors.textPrimary,
           bold: true,
         ),
 
@@ -564,7 +752,8 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: SText.caption),
+          Flexible(child: Text(label, style: SText.caption)),
+          const SizedBox(width: 12),
           Text(
             value,
             style: TextStyle(
@@ -582,6 +771,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
 
   // ── Step 2: PIN entry ─────────────────────────────────────────────────────
   Widget _buildStep2() {
+    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -604,8 +794,8 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         const SizedBox(height: 6),
         Center(
           child: Text(
-            'Enter your PIN to send\n'
-            'TZS ${Validators.formatNumber(_amount)} to ${_receiver!.fullName}',
+            'Sending $_selectedCurrency ${_sentAmount.toStringAsFixed(2)}\n'
+            '→ TZS ${Validators.formatNumber(_tzsReceived)} to ${_receiver!.fullName}',
             style: SText.caption,
             textAlign: TextAlign.center,
           ),
@@ -653,11 +843,12 @@ class _SendMoneyPageState extends State<SendMoneyPage>
   // ── Action button ─────────────────────────────────────────────────────────
   Widget _buildActionButton() {
     final loading = _searching || _sending;
+    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
     final label = _step == 0
         ? 'Find Recipient'
         : _step == 1
         ? 'Proceed to Confirm'
-        : 'Send TZS ${Validators.formatNumber(_amount)}';
+        : 'Send $symbol ${_sentAmount.toStringAsFixed(2)} → TZS';
     final onTap = _step == 0
         ? _lookupReceiver
         : _step == 1
@@ -685,14 +876,13 @@ class _SendMoneyPageState extends State<SendMoneyPage>
 
   String _initials(String name) {
     final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
+    if (parts.length >= 2)
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
     return parts.first.isNotEmpty ? parts.first[0].toUpperCase() : '?';
   }
 }
 
-// ─── Error box ─────────────────────────────────────────────────────────────
+// ─── Error box ───────────────────────────────────────────────────────────────
 class _ErrorBox extends StatelessWidget {
   final String message;
   const _ErrorBox({required this.message});

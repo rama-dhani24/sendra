@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/services/exchange_rate_service.dart';
 
 class ExchangePage extends StatefulWidget {
   const ExchangePage({super.key});
@@ -28,77 +29,153 @@ class _ExchangePageState extends State<ExchangePage>
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Page header ─────────────────────────────────────────────────
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
-            child: Text(
-              'Exchange',
-              style: TextStyle(
-                color: SColors.textPrimary,
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
+    return StreamBuilder<RateSnapshot>(
+      stream: ExchangeRateService.instance.stream,
+      builder: (context, snapshot) {
+        // Determine rate freshness for the live indicator
+        final isLive = snapshot.hasData;
+        final updatedAt = snapshot.data?.updatedAt;
 
-          // ── Tab bar ─────────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: SColors.navyCard,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: SColors.navyLight),
+        return SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Page header ───────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Exchange',
+                      style: TextStyle(
+                        color: SColors.textPrimary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Live rates badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isLive
+                            ? SColors.green.withOpacity(0.12)
+                            : SColors.navyCard,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isLive
+                              ? SColors.green.withOpacity(0.3)
+                              : SColors.navyLight,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: isLive ? SColors.green : SColors.textDim,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            isLive ? 'Live' : 'Connecting...',
+                            style: TextStyle(
+                              color: isLive ? SColors.green : SColors.textDim,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: TabBar(
-                controller: _tabCtrl,
-                indicator: BoxDecoration(
-                  color: SColors.gold,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: SColors.navy,
-                unselectedLabelColor: SColors.textSub,
-                labelStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                ),
-                dividerColor: Colors.transparent,
-                tabs: const [
-                  Tab(text: 'Convert'),
-                  Tab(text: 'FX Rates'),
-                  Tab(text: 'Crypto'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
 
-          // ── Tab views ───────────────────────────────────────────────────
-          Expanded(
-            child: TabBarView(
-              controller: _tabCtrl,
-              children: const [_ConverterTab(), _FxRatesTab(), _CryptoTab()],
-            ),
+              // Last updated timestamp
+              if (updatedAt != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  child: Text(
+                    'Updated ${_timeAgo(updatedAt)}',
+                    style: SText.tiny,
+                  ),
+                ),
+
+              const SizedBox(height: 16),
+
+              // ── Tab bar ───────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: SColors.navyCard,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: SColors.navyLight),
+                  ),
+                  child: TabBar(
+                    controller: _tabCtrl,
+                    indicator: BoxDecoration(
+                      color: SColors.gold,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    labelColor: SColors.navy,
+                    unselectedLabelColor: SColors.textSub,
+                    labelStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    dividerColor: Colors.transparent,
+                    tabs: const [
+                      Tab(text: 'Convert'),
+                      Tab(text: 'FX Rates'),
+                      Tab(text: 'Crypto'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+
+              // ── Tab views ─────────────────────────────────────────────
+              Expanded(
+                child: TabBarView(
+                  controller: _tabCtrl,
+                  children: const [
+                    _ConverterTab(),
+                    _FxRatesTab(),
+                    _CryptoTab(),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
+  }
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    return '${diff.inHours}h ago';
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Tab 1 — Converter
+// Tab 1 — Converter (rebuilds on every rate update via StreamBuilder)
 // ═══════════════════════════════════════════════════════════════════════════
 class _ConverterTab extends StatefulWidget {
   const _ConverterTab();
@@ -108,7 +185,6 @@ class _ConverterTab extends StatefulWidget {
 }
 
 class _ConverterTabState extends State<_ConverterTab> {
-  // All supported currencies — fiat first, then crypto
   static const _fiat = ['GBP', 'EUR', 'USD', 'USDT', 'TZS'];
   static const _crypto = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE'];
   static const _all = [..._fiat, ..._crypto];
@@ -125,6 +201,7 @@ class _ConverterTabState extends State<_ConverterTab> {
     super.dispose();
   }
 
+  // AppRates is already patched live by ExchangeRateService — just call convert()
   void _calculate() {
     final amount = double.tryParse(_ctrl.text.trim()) ?? 0;
     setState(() => _result = AppRates.convert(_from, _to, amount));
@@ -140,136 +217,136 @@ class _ConverterTabState extends State<_ConverterTab> {
     });
   }
 
-  String _formatResult(double v) {
+  String _fmt(double v) {
     if (v == 0) return '0';
     if (v >= 1000000) return Validators.formatDecimal(v, dp: 2);
     if (v >= 1) return Validators.formatDecimal(v, dp: 4);
     if (v >= 0.01) return v.toStringAsFixed(6);
-    return v.toStringAsFixed(8); // for crypto like BTC
+    return v.toStringAsFixed(8);
   }
 
   @override
   Widget build(BuildContext context) {
-    final amount = double.tryParse(_ctrl.text.trim()) ?? 0;
-    final rate1 = AppRates.convert(_from, _to, 1.0);
+    // Rebuild whenever live rates arrive
+    return StreamBuilder<RateSnapshot>(
+      stream: ExchangeRateService.instance.stream,
+      builder: (context, _) {
+        final amount = double.tryParse(_ctrl.text.trim()) ?? 0;
+        // Recalculate with fresh rates on every stream event
+        if (amount > 0) _result = AppRates.convert(_from, _to, amount);
+        final rate1 = AppRates.convert(_from, _to, 1.0);
 
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
-      children: [
-        // ── From field ───────────────────────────────────────────────────
-        _CurrencyInputCard(
-          label: 'You have',
-          currency: _from,
-          controller: _ctrl,
-          allCurrencies: _all,
-          onCurrencyChanged: (c) => setState(() {
-            _from = c;
-            _calculate();
-          }),
-          onAmountChanged: (_) => _calculate(),
-        ),
-        const SizedBox(height: 12),
-
-        // ── Swap button ──────────────────────────────────────────────────
-        Center(
-          child: GestureDetector(
-            onTap: _swap,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: SColors.gold.withOpacity(0.12),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: SColors.gold.withOpacity(0.4),
-                  width: 1.5,
-                ),
-              ),
-              child: const Icon(
-                Icons.swap_vert_rounded,
-                color: SColors.gold,
-                size: 22,
-              ),
+        return ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+          children: [
+            _CurrencyInputCard(
+              label: 'You have',
+              currency: _from,
+              controller: _ctrl,
+              allCurrencies: _all,
+              onCurrencyChanged: (c) => setState(() {
+                _from = c;
+                _calculate();
+              }),
+              onAmountChanged: (_) => _calculate(),
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-        // ── To field ─────────────────────────────────────────────────────
-        _CurrencyOutputCard(
-          label: 'You get',
-          currency: _to,
-          result: _result,
-          formatted: _formatResult(_result),
-          allCurrencies: _all,
-          onCurrencyChanged: (c) => setState(() {
-            _to = c;
-            _calculate();
-          }),
-        ),
-        const SizedBox(height: 20),
-
-        // ── Rate pill ────────────────────────────────────────────────────
-        if (amount > 0 && _result > 0)
-          _RatePill(
-            from: _from,
-            to: _to,
-            rate: rate1,
-            formatted: _formatResult(rate1),
-          ),
-
-        const SizedBox(height: 24),
-
-        // ── Copy result button ────────────────────────────────────────────
-        if (_result > 0)
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: _formatResult(_result)));
-                setState(() => _copied = true);
-                Future.delayed(
-                  const Duration(seconds: 2),
-                  () => setState(() => _copied = false),
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(
-                  color: _copied ? SColors.green : SColors.navyLight,
-                  width: 1,
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              icon: Icon(
-                _copied ? Icons.check_rounded : Icons.copy_rounded,
-                color: _copied ? SColors.green : SColors.textSub,
-                size: 16,
-              ),
-              label: Text(
-                _copied ? 'Copied!' : 'Copy Result',
-                style: TextStyle(
-                  color: _copied ? SColors.green : SColors.textSub,
-                  fontWeight: FontWeight.w600,
+            Center(
+              child: GestureDetector(
+                onTap: _swap,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: SColors.gold.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: SColors.gold.withOpacity(0.4),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.swap_vert_rounded,
+                    color: SColors.gold,
+                    size: 22,
+                  ),
                 ),
               ),
             ),
-          ),
+            const SizedBox(height: 12),
 
-        const SizedBox(height: 28),
+            _CurrencyOutputCard(
+              label: 'You get',
+              currency: _to,
+              result: _result,
+              formatted: _fmt(_result),
+              allCurrencies: _all,
+              onCurrencyChanged: (c) => setState(() {
+                _to = c;
+                _calculate();
+              }),
+            ),
+            const SizedBox(height: 20),
 
-        // ── Quick conversions ─────────────────────────────────────────────
-        _QuickConversions(from: _from, to: _to),
-      ],
+            if (amount > 0 && _result > 0)
+              _RatePill(
+                from: _from,
+                to: _to,
+                rate: rate1,
+                formatted: _fmt(rate1),
+              ),
+
+            const SizedBox(height: 24),
+
+            if (_result > 0)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: _fmt(_result)));
+                    setState(() => _copied = true);
+                    Future.delayed(const Duration(seconds: 2), () {
+                      if (mounted) setState(() => _copied = false);
+                    });
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: _copied ? SColors.green : SColors.navyLight,
+                      width: 1,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: Icon(
+                    _copied ? Icons.check_rounded : Icons.copy_rounded,
+                    color: _copied ? SColors.green : SColors.textSub,
+                    size: 16,
+                  ),
+                  label: Text(
+                    _copied ? 'Copied!' : 'Copy Result',
+                    style: TextStyle(
+                      color: _copied ? SColors.green : SColors.textSub,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 28),
+            _QuickConversions(from: _from, to: _to),
+          ],
+        );
+      },
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Tab 2 — FX Rates
+// Tab 2 — FX Rates (live from Firestore via stream)
 // ═══════════════════════════════════════════════════════════════════════════
 class _FxRatesTab extends StatelessWidget {
   const _FxRatesTab();
@@ -278,135 +355,216 @@ class _FxRatesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
-      children: [
-        // ── Rates vs TZS ──────────────────────────────────────────────────
-        _SectionHeader(
-          icon: '🇹🇿',
-          title: 'Rates vs TZS',
-          sub: '1 unit = X TZS',
-        ),
-        const SizedBox(height: 10),
-        ..._fiats.map(
-          (c) => _FxRateRow(
-            currency: c,
-            name: AppRates.currencyNames[c] ?? c,
-            flag: AppRates.currencyFlags[c] ?? '',
-            tzs: AppRates.priceInTzs(c),
-            usd: AppRates.priceInUsd(c),
-          ),
-        ),
+    return StreamBuilder<RateSnapshot>(
+      stream: ExchangeRateService.instance.stream,
+      builder: (context, snap) {
+        final rates = snap.data;
+        final spread = rates?.spread ?? AppRates.spread;
+        final spreadPct = (spread * 100).toStringAsFixed(1);
 
-        const SizedBox(height: 24),
-
-        // ── Cross rates ───────────────────────────────────────────────────
-        _SectionHeader(
-          icon: '💱',
-          title: 'Cross rates',
-          sub: 'Mid-market, no spread',
-        ),
-        const SizedBox(height: 10),
-        _CrossRateGrid(currencies: _fiats),
-
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: SColors.gold.withOpacity(0.07),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: SColors.gold.withOpacity(0.2)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline, color: SColors.gold, size: 14),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Rates shown are mid-market. '
-                  'A 1.5% spread applies on payments.',
-                  style: SText.tiny.copyWith(color: SColors.textSub),
-                ),
+        return ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+          children: [
+            _SectionHeader(
+              icon: '🇹🇿',
+              title: 'Rates vs TZS',
+              sub: '1 unit = X TZS (after ${spreadPct}% spread)',
+            ),
+            const SizedBox(height: 10),
+            ..._fiats.map(
+              (c) => _FxRateRow(
+                currency: c,
+                name: AppRates.currencyNames[c] ?? c,
+                flag: AppRates.currencyFlags[c] ?? '',
+                tzs: AppRates.priceInTzs(c), // live — AppRates already patched
+                usd: AppRates.priceInUsd(c),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+
+            const SizedBox(height: 24),
+            _SectionHeader(
+              icon: '💱',
+              title: 'Cross rates',
+              sub: 'Mid-market, no spread',
+            ),
+            const SizedBox(height: 10),
+            _CrossRateGrid(currencies: _fiats),
+
+            const SizedBox(height: 16),
+            // Live USDT → TZS rate card
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: SColors.gold.withOpacity(0.07),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: SColors.gold.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text('🔷', style: TextStyle(fontSize: 14)),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Live USDT → TZS rate',
+                        style: TextStyle(
+                          color: SColors.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: SColors.green.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'CoinGecko',
+                          style: TextStyle(
+                            color: SColors.green,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '1 USDT = TZS ${Validators.formatNumber(AppRates.usdtToTzs)}',
+                    style: const TextStyle(
+                      color: SColors.gold,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline,
+                        color: SColors.textDim,
+                        size: 12,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'Rates shown are mid-market. A $spreadPct% spread applies on payments.',
+                          style: SText.tiny.copyWith(color: SColors.textSub),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Tab 3 — Crypto
+// Tab 3 — Crypto (live prices from CoinGecko via Firestore)
 // ═══════════════════════════════════════════════════════════════════════════
 class _CryptoTab extends StatelessWidget {
   const _CryptoTab();
 
   @override
   Widget build(BuildContext context) {
-    final cryptos = AppRates.cryptoPriceUsd.keys.toList();
+    return StreamBuilder<RateSnapshot>(
+      stream: ExchangeRateService.instance.stream,
+      builder: (context, snap) {
+        final isLive = snap.hasData;
+        final cryptos = AppRates.cryptoPriceUsd.keys.toList();
 
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
-      children: [
-        _SectionHeader(
-          icon: '🪙',
-          title: 'Crypto Market',
-          sub: 'Prices in USD and TZS',
-        ),
-        const SizedBox(height: 10),
-        ...cryptos.map((symbol) {
-          final usdPrice = AppRates.cryptoPriceUsd[symbol]!;
-          final tzsPrice = AppRates.convert(symbol, 'TZS', 1.0);
-          return _CryptoRow(
-            symbol: symbol,
-            name: AppRates.currencyNames[symbol] ?? symbol,
-            flag: AppRates.currencyFlags[symbol] ?? symbol[0],
-            usd: usdPrice,
-            tzs: tzsPrice,
-          );
-        }),
+        return ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+          children: [
+            _SectionHeader(
+              icon: '🪙',
+              title: 'Crypto Market',
+              sub: isLive
+                  ? 'Live prices via CoinGecko'
+                  : 'Loading live prices...',
+            ),
+            const SizedBox(height: 10),
 
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: SColors.navyCard,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: SColors.navyLight),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.schedule_rounded,
-                color: SColors.textDim,
-                size: 14,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Demo prices. Live prices via CoinGecko API in production.',
-                  style: SText.tiny,
+            if (!isLive)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: SColors.gold,
+                    strokeWidth: 2,
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+
+            if (isLive)
+              ...cryptos.map((symbol) {
+                final usdPrice = AppRates.cryptoPriceUsd[symbol] ?? 0;
+                final tzsPrice = AppRates.convert(symbol, 'TZS', 1.0);
+                return _CryptoRow(
+                  symbol: symbol,
+                  name: AppRates.currencyNames[symbol] ?? symbol,
+                  flag: AppRates.currencyFlags[symbol] ?? symbol[0],
+                  usd: usdPrice,
+                  tzs: tzsPrice,
+                );
+              }),
+
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: SColors.navyCard,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: SColors.navyLight),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isLive
+                        ? Icons.check_circle_outline
+                        : Icons.schedule_rounded,
+                    color: isLive ? SColors.green : SColors.textDim,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isLive
+                          ? 'Live prices from CoinGecko · Refreshed every 30 min'
+                          : 'Fetching live prices...',
+                      style: SText.tiny,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Sub-widgets
+// Shared sub-widgets (unchanged structure, now always read live AppRates)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ── Currency input card (FROM) ─────────────────────────────────────────────
 class _CurrencyInputCard extends StatelessWidget {
-  final String label;
-  final String currency;
+  final String label, currency;
   final TextEditingController controller;
   final List<String> allCurrencies;
   final ValueChanged<String> onCurrencyChanged;
@@ -437,13 +595,11 @@ class _CurrencyInputCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              // Currency picker
               GestureDetector(
                 onTap: () => _showPicker(context),
                 child: _CurrencyPill(currency: currency),
               ),
               const SizedBox(width: 12),
-              // Amount input
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -478,26 +634,21 @@ class _CurrencyInputCard extends StatelessWidget {
     );
   }
 
-  void _showPicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _CurrencyPickerSheet(
-        selected: currency,
-        allCurrencies: allCurrencies,
-        onSelected: onCurrencyChanged,
-      ),
-    );
-  }
+  void _showPicker(BuildContext context) => showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (_) => _CurrencyPickerSheet(
+      selected: currency,
+      allCurrencies: allCurrencies,
+      onSelected: onCurrencyChanged,
+    ),
+  );
 }
 
-// ── Currency output card (TO) ─────────────────────────────────────────────
 class _CurrencyOutputCard extends StatelessWidget {
-  final String label;
-  final String currency;
+  final String label, currency, formatted;
   final double result;
-  final String formatted;
   final List<String> allCurrencies;
   final ValueChanged<String> onCurrencyChanged;
 
@@ -555,21 +706,18 @@ class _CurrencyOutputCard extends StatelessWidget {
     );
   }
 
-  void _showPicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _CurrencyPickerSheet(
-        selected: currency,
-        allCurrencies: allCurrencies,
-        onSelected: onCurrencyChanged,
-      ),
-    );
-  }
+  void _showPicker(BuildContext context) => showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (_) => _CurrencyPickerSheet(
+      selected: currency,
+      allCurrencies: allCurrencies,
+      onSelected: onCurrencyChanged,
+    ),
+  );
 }
 
-// ── Currency pill (flag + code) ────────────────────────────────────────────
 class _CurrencyPill extends StatelessWidget {
   final String currency;
   const _CurrencyPill({required this.currency});
@@ -578,7 +726,6 @@ class _CurrencyPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final flag = AppRates.currencyFlags[currency] ?? currency[0];
     final isCrypto = AppRates.isCrypto(currency);
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -632,13 +779,9 @@ class _CurrencyPill extends StatelessWidget {
   }
 }
 
-// ── Rate pill ──────────────────────────────────────────────────────────────
 class _RatePill extends StatelessWidget {
-  final String from;
-  final String to;
+  final String from, to, formatted;
   final double rate;
-  final String formatted;
-
   const _RatePill({
     required this.from,
     required this.to,
@@ -694,11 +837,8 @@ class _RatePill extends StatelessWidget {
   }
 }
 
-// ── Quick conversions grid ─────────────────────────────────────────────────
 class _QuickConversions extends StatelessWidget {
-  final String from;
-  final String to;
-
+  final String from, to;
   const _QuickConversions({required this.from, required this.to});
 
   @override
@@ -719,28 +859,16 @@ class _QuickConversions extends StatelessWidget {
         const SizedBox(height: 10),
         ...amounts.map((a) {
           final result = AppRates.convert(from, to, a);
-          String fmtA, fmtR;
-
-          if (AppRates.isCrypto(from)) {
-            fmtA = '$a $from';
-          } else if (from == 'TZS') {
-            fmtA = 'TZS ${Validators.formatNumber(a)}';
-          } else {
-            fmtA =
-                '${AppRates.currencySymbols[from] ?? from} ${a.toStringAsFixed(a < 10 ? 2 : 0)}';
-          }
-
-          if (AppRates.isCrypto(to)) {
-            fmtR = result >= 0.001
-                ? '${result.toStringAsFixed(6)} $to'
-                : '${result.toStringAsFixed(8)} $to';
-          } else if (to == 'TZS') {
-            fmtR = 'TZS ${Validators.formatNumber(result)}';
-          } else {
-            fmtR =
-                '${AppRates.currencySymbols[to] ?? to} ${Validators.formatDecimal(result, dp: 4)}';
-          }
-
+          final fmtA = AppRates.isCrypto(from)
+              ? '$a $from'
+              : from == 'TZS'
+              ? 'TZS ${Validators.formatNumber(a)}'
+              : '${AppRates.currencySymbols[from] ?? from} ${a.toStringAsFixed(a < 10 ? 2 : 0)}';
+          final fmtR = AppRates.isCrypto(to)
+              ? '${result >= 0.001 ? result.toStringAsFixed(6) : result.toStringAsFixed(8)} $to'
+              : to == 'TZS'
+              ? 'TZS ${Validators.formatNumber(result)}'
+              : '${AppRates.currencySymbols[to] ?? to} ${Validators.formatDecimal(result, dp: 4)}';
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
@@ -779,12 +907,10 @@ class _QuickConversions extends StatelessWidget {
   }
 }
 
-// ── Currency picker bottom sheet ───────────────────────────────────────────
 class _CurrencyPickerSheet extends StatefulWidget {
   final String selected;
   final List<String> allCurrencies;
   final ValueChanged<String> onSelected;
-
   const _CurrencyPickerSheet({
     required this.selected,
     required this.allCurrencies,
@@ -797,7 +923,6 @@ class _CurrencyPickerSheet extends StatefulWidget {
 
 class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
   String _search = '';
-
   List<String> get _filtered => widget.allCurrencies
       .where(
         (c) =>
@@ -818,7 +943,6 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
       ),
       child: Column(
         children: [
-          // Handle
           const SizedBox(height: 12),
           Center(
             child: Container(
@@ -843,8 +967,6 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
             ),
           ),
           const SizedBox(height: 14),
-
-          // Search field
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
@@ -867,8 +989,6 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
             ),
           ),
           const SizedBox(height: 12),
-
-          // List
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -879,7 +999,6 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
                 final name = AppRates.currencyNames[c] ?? c;
                 final isCryp = AppRates.isCrypto(c);
                 final selected = c == widget.selected;
-
                 return GestureDetector(
                   onTap: () {
                     widget.onSelected(c);
@@ -962,14 +1081,9 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
   }
 }
 
-// ── FX Rate row ────────────────────────────────────────────────────────────
 class _FxRateRow extends StatelessWidget {
-  final String currency;
-  final String name;
-  final String flag;
-  final double tzs;
-  final double usd;
-
+  final String currency, name, flag;
+  final double tzs, usd;
   const _FxRateRow({
     required this.currency,
     required this.name,
@@ -1033,21 +1147,16 @@ class _FxRateRow extends StatelessWidget {
   }
 }
 
-// ── Cross rate grid ────────────────────────────────────────────────────────
 class _CrossRateGrid extends StatelessWidget {
   final List<String> currencies;
-
   const _CrossRateGrid({required this.currencies});
 
   @override
   Widget build(BuildContext context) {
-    // Show all pairs except same-currency
-    final pairs = <_Pair>[];
-    for (int i = 0; i < currencies.length; i++) {
-      for (int j = i + 1; j < currencies.length; j++) {
-        pairs.add(_Pair(currencies[i], currencies[j]));
-      }
-    }
+    final pairs = <({String from, String to})>[];
+    for (int i = 0; i < currencies.length; i++)
+      for (int j = i + 1; j < currencies.length; j++)
+        pairs.add((from: currencies[i], to: currencies[j]));
 
     return Column(
       children: pairs.map((p) {
@@ -1098,20 +1207,9 @@ class _CrossRateGrid extends StatelessWidget {
   }
 }
 
-class _Pair {
-  final String from;
-  final String to;
-  const _Pair(this.from, this.to);
-}
-
-// ── Crypto row ─────────────────────────────────────────────────────────────
 class _CryptoRow extends StatelessWidget {
-  final String symbol;
-  final String name;
-  final String flag;
-  final double usd;
-  final double tzs;
-
+  final String symbol, name, flag;
+  final double usd, tzs;
   const _CryptoRow({
     required this.symbol,
     required this.name,
@@ -1125,7 +1223,6 @@ class _CryptoRow extends StatelessWidget {
     final usdStr = usd >= 1
         ? '\$${Validators.formatNumber(usd)}'
         : '\$${usd.toStringAsFixed(4)}';
-
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
@@ -1136,7 +1233,6 @@ class _CryptoRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Crypto avatar
           Container(
             width: 40,
             height: 40,
@@ -1195,12 +1291,8 @@ class _CryptoRow extends StatelessWidget {
   }
 }
 
-// ── Section header ─────────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
-  final String icon;
-  final String title;
-  final String sub;
-
+  final String icon, title, sub;
   const _SectionHeader({
     required this.icon,
     required this.title,
