@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
-import 'package:sendra/services/transaction_service.dart';
 import 'package:sendra/screens/receipt_screen.dart';
+import 'package:sendra/screens/transaction_service.dart';
 
 class HistoryPage extends StatefulWidget {
   final String userId;
-
   const HistoryPage({super.key, required this.userId});
 
   @override
@@ -16,8 +15,7 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage>
     with SingleTickerProviderStateMixin {
-  // 0 = All, 1 = Sent, 2 = Received
-  int _filter = 0;
+  int _filter = 0; // 0=All, 1=Sent, 2=Received
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -79,7 +77,7 @@ class _HistoryPageState extends State<HistoryPage>
     );
   }
 
-  // ── Summary stats bar ──────────────────────────────────────────────────────
+  // ── Summary bar ───────────────────────────────────────────────────────────
   Widget _buildSummaryBar() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -92,13 +90,10 @@ class _HistoryPageState extends State<HistoryPage>
           )
           .snapshots(),
       builder: (ctx, snap) {
-        final docs = snap.data?.docs ?? [];
-        double totalSent = 0;
-        double totalReceived = 0;
-        int sentCount = 0;
-        int receivedCount = 0;
+        double totalSent = 0, totalReceived = 0;
+        int sentCount = 0, receivedCount = 0;
 
-        for (final doc in docs) {
+        for (final doc in snap.data?.docs ?? []) {
           final data = doc.data()! as Map<String, dynamic>;
           final isSender = data[TxKeys.senderId] == widget.userId;
           if (isSender) {
@@ -142,9 +137,9 @@ class _HistoryPageState extends State<HistoryPage>
     );
   }
 
-  // ── Filter tabs ────────────────────────────────────────────────────────────
+  // ── Filter tabs ───────────────────────────────────────────────────────────
   Widget _buildFilterTabs() {
-    final labels = ['All', 'Sent', 'Received'];
+    const labels = ['All', 'Sent', 'Received'];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
@@ -186,29 +181,28 @@ class _HistoryPageState extends State<HistoryPage>
     );
   }
 
-  // ── Transaction list ───────────────────────────────────────────────────────
+  // ── Transaction list ──────────────────────────────────────────────────────
   Widget _buildList() {
-    Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
+    Query<Map<String, dynamic>> q = FirebaseFirestore.instance.collection(
       FSKeys.transactionsCollection,
     );
 
     if (_filter == 1) {
-      query = query.where(TxKeys.senderId, isEqualTo: widget.userId);
+      q = q.where(TxKeys.senderId, isEqualTo: widget.userId);
     } else if (_filter == 2) {
-      query = query.where(TxKeys.receiverId, isEqualTo: widget.userId);
+      q = q.where(TxKeys.receiverId, isEqualTo: widget.userId);
     } else {
-      query = query.where(
+      q = q.where(
         Filter.or(
           Filter(TxKeys.senderId, isEqualTo: widget.userId),
           Filter(TxKeys.receiverId, isEqualTo: widget.userId),
         ),
       );
     }
-
-    query = query.orderBy(TxKeys.createdAt, descending: true);
+    q = q.orderBy(TxKeys.createdAt, descending: true);
 
     return StreamBuilder<QuerySnapshot>(
-      stream: query.snapshots(),
+      stream: q.snapshots(),
       builder: (ctx, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -218,7 +212,6 @@ class _HistoryPageState extends State<HistoryPage>
             ),
           );
         }
-
         if (snap.hasError) {
           return Center(
             child: Padding(
@@ -241,8 +234,7 @@ class _HistoryPageState extends State<HistoryPage>
           final data = doc.data()! as Map<String, dynamic>;
           final ts = data[TxKeys.createdAt] as Timestamp?;
           final dt = ts?.toDate() ?? DateTime.now();
-          final key = _groupKey(dt);
-          grouped.putIfAbsent(key, () => []).add(doc);
+          grouped.putIfAbsent(_groupKey(dt), () => []).add(doc);
         }
 
         return ListView.builder(
@@ -252,7 +244,6 @@ class _HistoryPageState extends State<HistoryPage>
           itemBuilder: (ctx, gi) {
             final dateKey = grouped.keys.elementAt(gi);
             final txDocs = grouped[dateKey]!;
-
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -280,7 +271,7 @@ class _HistoryPageState extends State<HistoryPage>
   }
 
   Widget _buildEmpty() {
-    final messages = [
+    const msgs = [
       'No transactions yet.',
       'No sent transactions.',
       'No received transactions.',
@@ -303,7 +294,7 @@ class _HistoryPageState extends State<HistoryPage>
             ),
           ),
           const SizedBox(height: 14),
-          Text(messages[_filter], style: SText.caption),
+          Text(msgs[_filter], style: SText.caption),
           const SizedBox(height: 4),
           Text('Your transactions will appear here.', style: SText.tiny),
         ],
@@ -317,7 +308,7 @@ class _HistoryPageState extends State<HistoryPage>
     final d = DateTime(dt.year, dt.month, dt.day);
     if (d == today) return 'Today';
     if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    final months = [
+    const m = [
       'Jan',
       'Feb',
       'Mar',
@@ -331,69 +322,34 @@ class _HistoryPageState extends State<HistoryPage>
       'Nov',
       'Dec',
     ];
-    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+    return '${dt.day} ${m[dt.month - 1]} ${dt.year}';
   }
 }
 
-// ─── Transaction card ──────────────────────────────────────────────────────
+// ─── Transaction card ─────────────────────────────────────────────────────
 class _TxCard extends StatelessWidget {
   final QueryDocumentSnapshot doc;
   final String userId;
-
   const _TxCard({required this.doc, required this.userId});
 
   @override
   Widget build(BuildContext context) {
-    final data = doc.data()! as Map<String, dynamic>;
-    final isSender = data[TxKeys.senderId] == userId;
-    final sentCur = data[TxKeys.sentCurrency] as String? ?? 'TZS';
-    final sentAmt = (data[TxKeys.sentAmount] as num?)?.toDouble() ?? 0;
-    final amountTzs = (data[TxKeys.amountTzs] as num?)?.toDouble() ?? 0;
-    final feeTzs = (data[TxKeys.feeTzs] as num?)?.toDouble() ?? 0;
-    final totalDebited =
-        (data[TxKeys.totalDebitedTzs] as num?)?.toDouble() ?? 0;
-    final receivedTzs = (data[TxKeys.receivedTzs] as num?)?.toDouble() ?? 0;
-    final usdtAmt = (data[TxKeys.usdtAmount] as num?)?.toDouble() ?? 0;
-
-    final counterparty = isSender
-        ? data[TxKeys.receiverName] as String? ?? ''
-        : data[TxKeys.senderName] as String? ?? '';
-    final counterAcc = isSender
-        ? data[TxKeys.receiverAccNumber] as String? ?? ''
-        : data[TxKeys.senderAccNumber] as String? ?? '';
-
-    final ts = data[TxKeys.createdAt] as Timestamp?;
-    final dt = ts?.toDate() ?? DateTime.now();
-    final time =
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    final flag = AppRates.currencyFlags[sentCur] ?? '💰';
+    // Build TransactionModel from the Firestore doc
+    final tx = TransactionModel.fromDoc(doc);
+    final isSender = tx.senderId == userId;
+    final flag = AppRates.currencyFlags[tx.sentCurrency] ?? '💰';
     final txId = '#${doc.id.substring(0, 8).toUpperCase()}';
-    final status = data[TxKeys.status] as String? ?? 'completed';
+    final time =
+        '${tx.createdAt.hour.toString().padLeft(2, '0')}:'
+        '${tx.createdAt.minute.toString().padLeft(2, '0')}';
+
+    final counterparty = isSender ? tx.receiverName : tx.senderName;
+    final counterAcc = isSender ? tx.receiverAccNumber : tx.senderAccNumber;
 
     return GestureDetector(
-      onTap: () {
-        final tx = TransactionModel(
-          id: doc.id,
-          senderId: data[TxKeys.senderId] as String? ?? '',
-          senderName: data[TxKeys.senderName] as String? ?? '',
-          senderAccNumber: data[TxKeys.senderAccNumber] as String? ?? '',
-          receiverId: data[TxKeys.receiverId] as String? ?? '',
-          receiverName: data[TxKeys.receiverName] as String? ?? '',
-          receiverAccNumber: data[TxKeys.receiverAccNumber] as String? ?? '',
-          sentCurrency: sentCur,
-          sentAmount: sentAmt,
-          usdtAmount: usdtAmt,
-          amountTzs: amountTzs,
-          feeTzs: feeTzs,
-          totalDebitedTzs: totalDebited,
-          receivedTzs: receivedTzs,
-          createdAt: dt,
-          status: status,
-        );
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => ReceiptScreen(transaction: tx)),
-        );
-      },
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => ReceiptScreen(transaction: tx))),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(16),
@@ -404,10 +360,9 @@ class _TxCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // ── Main row ────────────────────────────────────────────────
+            // Main row
             Row(
               children: [
-                // Flag + direction badge
                 SizedBox(
                   width: 44,
                   height: 44,
@@ -452,7 +407,6 @@ class _TxCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -472,14 +426,13 @@ class _TxCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
                       isSender
-                          ? '−${sentAmt.toStringAsFixed(2)} $sentCur'
-                          : '+TZS ${Validators.formatNumber(receivedTzs)}',
+                          ? '−${tx.sentAmount.toStringAsFixed(2)} ${tx.sentCurrency}'
+                          : '+TZS ${Validators.formatNumber(tx.receivedTzs)}',
                       style: TextStyle(
                         color: isSender ? SColors.red : SColors.green,
                         fontSize: 14,
@@ -489,8 +442,8 @@ class _TxCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       isSender
-                          ? '−TZS ${Validators.formatNumber(totalDebited)} total'
-                          : '+TZS ${Validators.formatNumber(amountTzs)} gross',
+                          ? '−TZS ${Validators.formatNumber(tx.totalDebitedTzs)} total'
+                          : '+TZS ${Validators.formatNumber(tx.amountTzs)} gross',
                       style: const TextStyle(
                         color: SColors.textDim,
                         fontSize: 10,
@@ -501,7 +454,7 @@ class _TxCard extends StatelessWidget {
               ],
             ),
 
-            // ── Detail row ───────────────────────────────────────────────
+            // Detail row
             const SizedBox(height: 10),
             Container(height: 1, color: SColors.navyBorder),
             const SizedBox(height: 8),
@@ -509,44 +462,16 @@ class _TxCard extends StatelessWidget {
               children: [
                 Text(txId, style: SText.tiny),
                 const Spacer(),
-                if (isSender && feeTzs > 0) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: SColors.red.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      'Fee TZS ${Validators.formatNumber(feeTzs)}',
-                      style: const TextStyle(
-                        color: SColors.red,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                if (isSender && tx.feeTzs > 0) ...[
+                  _badge(
+                    'Fee TZS ${Validators.formatNumber(tx.feeTzs)}',
+                    SColors.red,
                   ),
                   const SizedBox(width: 6),
                 ],
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: SColors.green.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    status[0].toUpperCase() + status.substring(1),
-                    style: const TextStyle(
-                      color: SColors.green,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                _badge(
+                  tx.status[0].toUpperCase() + tx.status.substring(1),
+                  SColors.green,
                 ),
                 const SizedBox(width: 6),
                 const Icon(
@@ -561,16 +486,25 @@ class _TxCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _badge(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.10),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
+    ),
+  );
 }
 
-// ─── Stat card ─────────────────────────────────────────────────────────────
+// ─── Stat card ────────────────────────────────────────────────────────────
 class _StatCard extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final String value;
-  final String sub;
+  final String label, value, sub;
   final Color color;
-
   const _StatCard({
     required this.icon,
     required this.label,

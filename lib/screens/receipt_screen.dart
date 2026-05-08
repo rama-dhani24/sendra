@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
-import 'package:sendra/services/transaction_service.dart';
+
 import 'dart:ui' as ui;
 import 'package:path_provider/path_provider.dart';
+import 'package:sendra/screens/transaction_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 
@@ -30,7 +31,7 @@ class ReceiptScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
                 child: Column(
                   children: [
-                    // ── Success badge ─────────────────────────────────────
+                    // Success badge
                     Container(
                       width: 80,
                       height: 80,
@@ -59,14 +60,13 @@ class ReceiptScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${tx.sentAmount.toStringAsFixed(2)} ${tx.sentCurrency} '
-                      'sent to ${tx.receiverName}',
+                      '${tx.sentAmount.toStringAsFixed(2)} ${tx.sentCurrency} sent to ${tx.receiverName}',
                       style: SText.caption,
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 32),
 
-                    // ── Receipt card (wrapped for screenshot) ─────────────
+                    // Receipt card
                     RepaintBoundary(
                       key: _receiptKey,
                       child: Container(
@@ -141,7 +141,7 @@ class ReceiptScreen extends StatelessWidget {
                               ),
                             ),
 
-                            // ── Receipt rows ──────────────────────────────
+                            // Receipt rows
                             Padding(
                               padding: const EdgeInsets.all(16),
                               child: Column(
@@ -158,37 +158,32 @@ class ReceiptScreen extends StatelessWidget {
                                     'To',
                                     '${tx.receiverName} (${tx.receiverAccNumber})',
                                   ),
-
                                   const SizedBox(height: 10),
                                   _sectionDivider('CONVERSION'),
-
+                                  _receiptRow('You sent', _fmtSent(tx)),
+                                  if (tx.sentCurrency != 'TZS')
+                                    _receiptRow(
+                                      'USDT equivalent',
+                                      '${Validators.formatUsdt(tx.usdtAmount)} USDT',
+                                      valueColor: SColors.gold,
+                                    ),
                                   _receiptRow(
-                                    'Sent',
-                                    '${tx.sentAmount.toStringAsFixed(2)} '
-                                        '${tx.sentCurrency}',
+                                    'Rate used',
+                                    '1 USDT = TZS ${Validators.formatNumber(tx.usdtToTzsRate)}',
                                   ),
                                   _receiptRow(
-                                    'USDT (after 1.5% spread)',
-                                    '${Validators.formatUsdt(tx.usdtAmount)} USDT',
-                                    valueColor: SColors.gold,
-                                  ),
-                                  _receiptRow(
-                                    'TZS gross (× 2,650)',
+                                    'TZS amount',
                                     'TZS ${Validators.formatNumber(tx.amountTzs)}',
                                   ),
-
                                   const SizedBox(height: 10),
                                   _sectionDivider('CHARGES'),
-
                                   _receiptRow(
                                     'Transaction fee (1%)',
-                                    '− TZS ${Validators.formatNumber(tx.feeTzs)}',
+                                    '- TZS ${Validators.formatNumber(tx.feeTzs)}',
                                     valueColor: SColors.red,
                                   ),
-
                                   const SizedBox(height: 10),
                                   _sectionDivider('SUMMARY'),
-
                                   _receiptRow(
                                     'Total cost to sender',
                                     'TZS ${Validators.formatNumber(tx.totalDebitedTzs)}',
@@ -235,7 +230,7 @@ class ReceiptScreen extends StatelessWidget {
               ),
             ),
 
-            // ── Bottom buttons ────────────────────────────────────────────
+            // Bottom buttons
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
               child: Column(
@@ -311,22 +306,24 @@ class ReceiptScreen extends StatelessWidget {
     );
   }
 
-  // ── Download receipt as image ─────────────────────────────────────────────
+  // Extracted to avoid quote conflict inside string interpolation
+  String _fmtSent(TransactionModel tx) {
+    final dp = tx.sentCurrency == 'TZS' ? 0 : 4;
+    return '${tx.sentAmount.toStringAsFixed(dp)} ${tx.sentCurrency}';
+  }
+
   Future<void> _downloadReceipt(BuildContext context) async {
     try {
       final boundary =
           _receiptKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary?;
       if (boundary == null) return;
-
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
-
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/receipt_${transaction.id}.png');
       await file.writeAsBytes(byteData.buffer.asUint8List());
-
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -355,28 +352,24 @@ class ReceiptScreen extends StatelessWidget {
     }
   }
 
-  // ── Share receipt as image ────────────────────────────────────────────────
   Future<void> _shareReceipt(BuildContext context) async {
     try {
       final boundary =
           _receiptKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary?;
       if (boundary == null) return;
-
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
-
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/receipt_${transaction.id}.png');
       await file.writeAsBytes(byteData.buffer.asUint8List());
-
       await Share.shareXFiles(
         [XFile(file.path)],
         text:
-            'Sendra Transaction Receipt · '
+            'Sendra Receipt · '
             '${transaction.sentAmount.toStringAsFixed(2)} '
-            '${transaction.sentCurrency} → '
+            '${transaction.sentCurrency} -> '
             'TZS ${Validators.formatNumber(transaction.receivedTzs)}',
       );
     } catch (e) {
@@ -392,7 +385,6 @@ class ReceiptScreen extends StatelessWidget {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
   Widget _sectionDivider(String label) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -448,7 +440,7 @@ class ReceiptScreen extends StatelessWidget {
   }
 
   String _formatDate(DateTime dt) {
-    final months = [
+    const months = [
       'Jan',
       'Feb',
       'Mar',
@@ -463,12 +455,11 @@ class ReceiptScreen extends StatelessWidget {
       'Dec',
     ];
     final h = dt.hour.toString().padLeft(2, '0');
-    final min = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $h:$min';
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $h:$m';
   }
 }
 
-// ─── Tear line ─────────────────────────────────────────────────────────────
 class _TearLine extends StatelessWidget {
   const _TearLine();
 

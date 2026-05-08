@@ -1,4 +1,4 @@
-// import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,30 +18,22 @@ class SendMoneyPage extends StatefulWidget {
 
 class _SendMoneyPageState extends State<SendMoneyPage>
     with SingleTickerProviderStateMixin {
-  // ── Step: 0 = enter details, 1 = preview, 2 = confirm PIN ───────────────
-  int _step = 0;
+  int _step = 0; // 0=details, 1=preview, 2=PIN
 
   final _accCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _pinCtrl = TextEditingController();
 
-  // Sending currencies per the plan
   static const _currencies = ['GBP', 'EUR', 'USD', 'USDT'];
-  static const _currencyFlags = {
+  static const _flags = {
     'GBP': '🇬🇧',
     'EUR': '🇪🇺',
     'USD': '🇺🇸',
     'USDT': '🔷',
   };
-  static const _currencySymbols = {
-    'GBP': '£',
-    'EUR': '€',
-    'USD': '\$',
-    'USDT': '₮',
-  };
+  static const _symbols = {'GBP': '£', 'EUR': '€', 'USD': '\$', 'USDT': '₮'};
 
-  String _selectedCurrency = 'GBP'; // default sending currency
-
+  String _currency = 'GBP';
   bool _searching = false;
   bool _sending = false;
   bool _pinHidden = true;
@@ -71,97 +63,87 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     super.dispose();
   }
 
-  // ── Derived conversion values (live) ──────────────────────────────────────
-  double get _sentAmount => double.tryParse(_amountCtrl.text.trim()) ?? 0;
+  // ── Live derived values ───────────────────────────────────────────────────
+  double get _sent => double.tryParse(_amountCtrl.text.trim()) ?? 0;
 
-  // How much TZS the receiver gets (after spread, before fee)
   double get _tzsReceived {
-    if (_sentAmount <= 0) return 0;
-    final rates = ExchangeRateService.instance.latest;
-    if (rates != null) return rates.toTzs(_selectedCurrency, _sentAmount);
-    return AppRates.toTzs(_selectedCurrency, _sentAmount);
+    if (_sent <= 0) return 0;
+    final r = ExchangeRateService.instance.latest;
+    return r != null
+        ? r.toTzs(_currency, _sent)
+        : AppRates.toTzs(_currency, _sent);
   }
 
-  // USDT equivalent (for display and storage)
-  double get _usdtAmount {
-    if (_sentAmount <= 0) return 0;
-    final rates = ExchangeRateService.instance.latest;
-    final spread = rates?.spread ?? AppRates.spread;
-    final usdtToTzs = rates?.usdtToTzs ?? AppRates.usdtToTzs;
-    if (_selectedCurrency == 'TZS') return _sentAmount / usdtToTzs;
-    if (_selectedCurrency == 'USDT') return _sentAmount * (1 - spread);
-    double fiatRate;
-    if (rates != null && rates.fiat.containsKey(_selectedCurrency)) {
-      fiatRate = rates.fiat[_selectedCurrency]!;
+  double get _usdtAmt {
+    if (_sent <= 0) return 0;
+    final r = ExchangeRateService.instance.latest;
+    final spread = r?.spread ?? AppRates.spread;
+    final u2t = r?.usdtToTzs ?? AppRates.usdtToTzs;
+    if (_currency == 'TZS') return _sent / u2t;
+    if (_currency == 'USDT') return _sent * (1 - spread);
+    double fr;
+    if (r != null && r.fiat.containsKey(_currency)) {
+      fr = r.fiat[_currency]!;
     } else {
-      switch (_selectedCurrency) {
+      switch (_currency) {
         case 'GBP':
-          fiatRate = AppRates.gbpToUsdt;
+          fr = AppRates.gbpToUsdt;
           break;
         case 'EUR':
-          fiatRate = AppRates.eurToUsdt;
+          fr = AppRates.eurToUsdt;
           break;
         default:
-          fiatRate = AppRates.usdToUsdt;
+          fr = AppRates.usdToUsdt;
       }
     }
-    return _sentAmount * fiatRate * (1 - spread);
+    return _sent * fr * (1 - spread);
   }
 
-  // Fee is 1% of TZS amount
   double get _feeTzs => double.parse(
     (_tzsReceived * AppFees.transactionFeeRate).toStringAsFixed(2),
   );
 
-  // Total TZS debited from sender's TZS balance
-  double get _totalDebitTzs => _tzsReceived + _feeTzs;
+  double get _totalDebit => _tzsReceived + _feeTzs;
 
-  // Spread % for display
   double get _spreadPct {
-    final rates = ExchangeRateService.instance.latest;
-    return (rates?.spread ?? AppRates.spread) * 100;
+    final r = ExchangeRateService.instance.latest;
+    return (r?.spread ?? AppRates.spread) * 100;
   }
 
-  // Live rate label
   String get _rateLabel {
-    final rates = ExchangeRateService.instance.latest;
-    final tzs = rates != null
-        ? rates.toTzs(_selectedCurrency, 1.0)
-        : AppRates.toTzs(_selectedCurrency, 1.0);
-    return '1 $_selectedCurrency ≈ TZS ${Validators.formatNumber(tzs)} '
-        '(${_spreadPct.toStringAsFixed(1)}% spread applied)';
+    final r = ExchangeRateService.instance.latest;
+    final tzs = r != null
+        ? r.toTzs(_currency, 1.0)
+        : AppRates.toTzs(_currency, 1.0);
+    return '1 $_currency ≈ TZS ${Validators.formatNumber(tzs)} (${_spreadPct.toStringAsFixed(1)}% spread)';
   }
 
-  // ── Step 0 → 1: look up receiver ─────────────────────────────────────────
+  // ── Step 0 → 1: find receiver ─────────────────────────────────────────────
   Future<void> _lookupReceiver() async {
     setState(() => _error = '');
-
     final acc = _accCtrl.text.trim();
-    final amount = _sentAmount;
 
     if (acc.isEmpty) {
       setState(() => _error = 'Enter the recipient\'s Sendra ID.');
       return;
     }
     if (acc == widget.sender.accNumber) {
-      setState(() => _error = 'You cannot send money to yourself.');
+      setState(() => _error = 'Cannot send to yourself.');
       return;
     }
-    if (amount <= 0) {
+    if (_sent <= 0) {
       setState(() => _error = 'Enter a valid amount.');
       return;
     }
-    if (_totalDebitTzs > widget.sender.balanceTzs) {
+    if (_totalDebit > widget.sender.balanceTzs) {
       setState(
         () => _error =
-            'Insufficient TZS balance. You need TZS ${Validators.formatNumber(_totalDebitTzs)} '
-            '(incl. TZS ${Validators.formatNumber(_feeTzs)} fee).',
+            'Insufficient balance. Need TZS ${Validators.formatNumber(_totalDebit)} (incl. fee).',
       );
       return;
     }
 
     setState(() => _searching = true);
-
     try {
       final found = await TransactionService.findUserByAccNumber(acc);
       if (found == null) {
@@ -187,8 +169,8 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     }
   }
 
-  // ── Step 1 → 2 ───────────────────────────────────────────────────────────
-  void _goToConfirm() {
+  // ── Step 1 → 2 ────────────────────────────────────────────────────────────
+  void _goToPin() {
     setState(() {
       _step = 2;
       _error = '';
@@ -198,10 +180,9 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       ..forward();
   }
 
-  // ── Step 2: verify PIN via Firebase Auth + execute ────────────────────────
+  // ── Step 2: verify PIN → execute ──────────────────────────────────────────
   Future<void> _confirmAndSend() async {
     setState(() => _error = '');
-
     final pin = _pinCtrl.text.trim();
     if (!Validators.isValidPin(pin)) {
       setState(() => _error = 'Enter your 4-digit PIN.');
@@ -211,20 +192,17 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     setState(() => _sending = true);
 
     try {
-      // Re-authenticate with Firebase Auth to verify PIN
-      // This is more secure than reading the PIN from Firestore
+      // Re-authenticate with Firebase Auth — more secure than reading PIN from Firestore
       final user = FirebaseAuth.instance.currentUser;
-      final phone = widget.sender.phone;
-      final email = '$phone@sendra.app';
-
       if (user == null) throw 'Session expired. Please log in again.';
 
       try {
-        final credential = EmailAuthProvider.credential(
-          email: email,
-          password: '${pin}_sendra',
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(
+            email: '${widget.sender.phone}@sendra.app',
+            password: '${pin}_sendra',
+          ),
         );
-        await user.reauthenticateWithCredential(credential);
       } on FirebaseAuthException {
         setState(() {
           _error = 'Incorrect PIN. Please try again.';
@@ -233,17 +211,15 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         return;
       }
 
-      // PIN verified — execute the transaction
       final tx = await TransactionService.sendMoney(
         sender: widget.sender,
         receiver: _receiver!,
-        currency: _selectedCurrency,
-        sentAmount: _sentAmount,
+        currency: _currency,
+        sentAmount: _sent,
       );
 
       if (!mounted) return;
       setState(() => _sending = false);
-
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => ReceiptScreen(transaction: tx)),
       );
@@ -272,24 +248,20 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           onPressed: () {
             if (_step == 0) {
               Navigator.of(context).pop();
-            } else {
-              setState(() {
-                _step = _step - 1;
-                _error = '';
-                if (_step == 0) _pinCtrl.clear();
-              });
-              _animCtrl
-                ..reset()
-                ..forward();
+              return;
             }
+            setState(() {
+              _step--;
+              _error = '';
+              if (_step == 0) _pinCtrl.clear();
+            });
+            _animCtrl
+              ..reset()
+              ..forward();
           },
         ),
         title: Text(
-          _step == 0
-              ? 'Send Money'
-              : _step == 1
-              ? 'Confirm Details'
-              : 'Enter PIN',
+          ['Send Money', 'Confirm Details', 'Enter PIN'][_step],
           style: SText.sectionTitle,
         ),
         centerTitle: true,
@@ -303,7 +275,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStepIndicator(),
+                _buildStepBar(),
                 const SizedBox(height: 28),
                 if (_step == 0) _buildStep0(),
                 if (_step == 1) _buildStep1(),
@@ -313,7 +285,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                   _ErrorBox(message: _error),
                 ],
                 const SizedBox(height: 28),
-                _buildActionButton(),
+                _buildButton(),
               ],
             ),
           ),
@@ -322,11 +294,10 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  // ── Step indicator ────────────────────────────────────────────────────────
-  Widget _buildStepIndicator() {
+  Widget _buildStepBar() {
     return Row(
       children: List.generate(5, (i) {
-        if (i.isOdd) {
+        if (i.isOdd)
           return Expanded(
             child: Container(
               height: 2,
@@ -334,7 +305,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               color: _step >= (i ~/ 2) + 1 ? SColors.gold : SColors.navyLight,
             ),
           );
-        }
         final idx = i ~/ 2;
         final active = _step >= idx;
         return Container(
@@ -365,14 +335,13 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  // ── Step 0: currency + amount + recipient ─────────────────────────────────
+  // ── Step 0 ────────────────────────────────────────────────────────────────
   Widget _buildStep0() {
-    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
-
+    final symbol = _symbols[_currency] ?? _currency;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Sender TZS balance
+        // Balance chip
         Container(
           padding: const EdgeInsets.all(14),
           decoration: SDecor.card,
@@ -411,45 +380,43 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 24),
 
-        // ── Currency selector ─────────────────────────────────────────────
+        // Currency chips
         Text('Sending Currency', style: SText.label),
         const SizedBox(height: 10),
         Row(
           children: _currencies.map((c) {
-            final selected = c == _selectedCurrency;
+            final sel = c == _currency;
             return Expanded(
               child: GestureDetector(
                 onTap: () => setState(() {
-                  _selectedCurrency = c;
+                  _currency = c;
                 }),
                 child: Container(
                   margin: const EdgeInsets.only(right: 8),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
-                    color: selected
+                    color: sel
                         ? SColors.gold.withOpacity(0.15)
                         : SColors.navyCard,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: selected ? SColors.gold : SColors.navyLight,
-                      width: selected ? 1.5 : 1,
+                      color: sel ? SColors.gold : SColors.navyLight,
+                      width: sel ? 1.5 : 1,
                     ),
                   ),
                   child: Column(
                     children: [
                       Text(
-                        _currencyFlags[c] ?? '',
+                        _flags[c] ?? '',
                         style: const TextStyle(fontSize: 16),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         c,
                         style: TextStyle(
-                          color: selected ? SColors.gold : SColors.textSub,
+                          color: sel ? SColors.gold : SColors.textSub,
                           fontSize: 11,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w400,
+                          fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
                         ),
                       ),
                     ],
@@ -460,11 +427,10 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           }).toList(),
         ),
         const SizedBox(height: 8),
-        // Live rate for selected currency
         Text(_rateLabel, style: SText.tiny),
         const SizedBox(height: 20),
 
-        // ── Amount input ──────────────────────────────────────────────────
+        // Amount
         Text('Amount ($symbol)', style: SText.label),
         const SizedBox(height: 8),
         Container(
@@ -493,8 +459,8 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           ),
         ),
 
-        // ── Live conversion preview ───────────────────────────────────────
-        if (_sentAmount > 0) ...[
+        // Live conversion preview
+        if (_sent > 0) ...[
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(14),
@@ -505,23 +471,22 @@ class _SendMoneyPageState extends State<SendMoneyPage>
             ),
             child: Column(
               children: [
-                // Conversion path
                 Row(
                   children: [
                     const Icon(
-                      Icons.arrow_downward_rounded,
-                      color: SColors.green,
+                      Icons.swap_vert_rounded,
+                      color: SColors.gold,
                       size: 14,
                     ),
                     const SizedBox(width: 6),
-                    Text('Conversion breakdown', style: SText.tiny),
+                    Text('Live conversion', style: SText.tiny),
                   ],
                 ),
                 const SizedBox(height: 10),
-                if (_selectedCurrency != 'USDT') ...[
+                if (_currency != 'USDT') ...[
                   _convRow(
-                    '$_selectedCurrency → USDT',
-                    '≈ ${Validators.formatUsdt(_usdtAmount)} USDT',
+                    '$_currency → USDT',
+                    '≈ ${Validators.formatUsdt(_usdtAmt)} USDT',
                     SColors.textSub,
                   ),
                   const SizedBox(height: 6),
@@ -546,7 +511,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                 ),
                 _convRow(
                   'Total deducted',
-                  'TZS ${Validators.formatNumber(_totalDebitTzs)}',
+                  'TZS ${Validators.formatNumber(_totalDebit)}',
                   SColors.textPrimary,
                   bold: true,
                 ),
@@ -557,7 +522,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
 
         const SizedBox(height: 24),
 
-        // ── Recipient account ─────────────────────────────────────────────
+        // Recipient ID
         Text('Recipient Sendra ID', style: SText.label),
         const SizedBox(height: 8),
         Container(
@@ -591,34 +556,27 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  Widget _convRow(
-    String label,
-    String value,
-    Color valueColor, {
-    bool bold = false,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: SText.caption),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor,
-            fontSize: bold ? 14 : 13,
-            fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+  Widget _convRow(String label, String value, Color vc, {bool bold = false}) =>
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: SText.caption),
+          Text(
+            value,
+            style: TextStyle(
+              color: vc,
+              fontSize: bold ? 14 : 13,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+            ),
           ),
-        ),
-      ],
-    );
-  }
+        ],
+      );
 
   // ── Step 1: preview ───────────────────────────────────────────────────────
   Widget _buildStep1() {
     final r = _receiver!;
-    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
-    final flag = _currencyFlags[_selectedCurrency] ?? '';
-
+    final symbol = _symbols[_currency] ?? _currency;
+    final flag = _flags[_currency] ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -669,49 +627,44 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 20),
 
-        // Full breakdown matching the plan
-        _previewRow(
+        _pRow(
           'You send',
-          '$flag $symbol ${_sentAmount.toStringAsFixed(_selectedCurrency == 'USDT' ? 2 : 4)} $_selectedCurrency',
+          '$flag $symbol ${_sent.toStringAsFixed(4)} $_currency',
           SColors.textPrimary,
         ),
-        _divider(),
-        if (_selectedCurrency != 'USDT') ...[
-          _previewRow(
+        _div(),
+        if (_currency != 'USDT') ...[
+          _pRow(
             'Converted to USDT',
-            '≈ ${Validators.formatUsdt(_usdtAmount)} USDT',
+            '≈ ${Validators.formatUsdt(_usdtAmt)} USDT',
             SColors.textSub,
           ),
-          _divider(),
+          _div(),
         ],
-        _previewRow(
+        _pRow(
           'Converted to TZS',
           'TZS ${Validators.formatNumber(_tzsReceived)}',
           SColors.textPrimary,
         ),
-        _divider(),
-        _previewRow(
-          'Spread applied',
-          '${_spreadPct.toStringAsFixed(1)}%',
-          SColors.textSub,
-        ),
-        _divider(),
-        _previewRow(
+        _div(),
+        _pRow('Spread', '${_spreadPct.toStringAsFixed(1)}%', SColors.textSub),
+        _div(),
+        _pRow(
           'Transaction fee (1%)',
           '− TZS ${Validators.formatNumber(_feeTzs)}',
           SColors.red,
         ),
-        _divider(),
-        _previewRow(
+        _div(),
+        _pRow(
           'Recipient gets',
           'TZS ${Validators.formatNumber(_tzsReceived)}',
           SColors.green,
           bold: true,
         ),
-        _divider(),
-        _previewRow(
-          'Total debited from your balance',
-          'TZS ${Validators.formatNumber(_totalDebitTzs)}',
+        _div(),
+        _pRow(
+          'Total debited',
+          'TZS ${Validators.formatNumber(_totalDebit)}',
           SColors.textPrimary,
           bold: true,
         ),
@@ -741,37 +694,29 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  Widget _previewRow(
-    String label,
-    String value,
-    Color valueColor, {
-    bool bold = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Flexible(child: Text(label, style: SText.caption)),
-          const SizedBox(width: 12),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: bold ? 15 : 14,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
-            ),
+  Widget _pRow(String l, String v, Color vc, {bool bold = false}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Flexible(child: Text(l, style: SText.caption)),
+        const SizedBox(width: 12),
+        Text(
+          v,
+          style: TextStyle(
+            color: vc,
+            fontSize: bold ? 15 : 14,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 
-  Widget _divider() => Container(height: 1, color: SColors.navyLight);
+  Widget _div() => Container(height: 1, color: SColors.navyLight);
 
-  // ── Step 2: PIN entry ─────────────────────────────────────────────────────
+  // ── Step 2: PIN ───────────────────────────────────────────────────────────
   Widget _buildStep2() {
-    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -794,7 +739,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         const SizedBox(height: 6),
         Center(
           child: Text(
-            'Sending $_selectedCurrency ${_sentAmount.toStringAsFixed(2)}\n'
+            'Sending ${_symbols[_currency] ?? ''} ${_sent.toStringAsFixed(2)} $_currency\n'
             '→ TZS ${Validators.formatNumber(_tzsReceived)} to ${_receiver!.fullName}',
             style: SText.caption,
             textAlign: TextAlign.center,
@@ -840,25 +785,20 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  // ── Action button ─────────────────────────────────────────────────────────
-  Widget _buildActionButton() {
+  Widget _buildButton() {
     final loading = _searching || _sending;
-    final symbol = _currencySymbols[_selectedCurrency] ?? _selectedCurrency;
-    final label = _step == 0
-        ? 'Find Recipient'
-        : _step == 1
-        ? 'Proceed to Confirm'
-        : 'Send $symbol ${_sentAmount.toStringAsFixed(2)} → TZS';
-    final onTap = _step == 0
-        ? _lookupReceiver
-        : _step == 1
-        ? _goToConfirm
-        : _confirmAndSend;
+    final symbol = _symbols[_currency] ?? _currency;
+    final labels = [
+      'Find Recipient',
+      'Proceed to Confirm',
+      'Send $symbol ${_sent.toStringAsFixed(2)} → TZS',
+    ];
+    final actions = [_lookupReceiver, _goToPin, _confirmAndSend];
 
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: loading ? null : onTap,
+        onPressed: loading ? null : actions[_step],
         style: SButton.primary,
         child: loading
             ? const SizedBox(
@@ -869,36 +809,31 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                   strokeWidth: 2.5,
                 ),
               )
-            : Text(label, style: SButton.primaryLabel),
+            : Text(labels[_step], style: SButton.primaryLabel),
       ),
     );
   }
 
   String _initials(String name) {
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2)
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    return parts.first.isNotEmpty ? parts.first[0].toUpperCase() : '?';
+    final p = name.trim().split(' ');
+    if (p.length >= 2) return '${p.first[0]}${p.last[0]}'.toUpperCase();
+    return p.first.isNotEmpty ? p.first[0].toUpperCase() : '?';
   }
 }
 
-// ─── Error box ───────────────────────────────────────────────────────────────
 class _ErrorBox extends StatelessWidget {
   final String message;
   const _ErrorBox({required this.message});
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: SDecor.errorBox,
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, color: SColors.red, size: 16),
-          const SizedBox(width: 8),
-          Expanded(child: Text(message, style: SText.errorText)),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: SDecor.errorBox,
+    child: Row(
+      children: [
+        const Icon(Icons.error_outline, color: SColors.red, size: 16),
+        const SizedBox(width: 8),
+        Expanded(child: Text(message, style: SText.errorText)),
+      ],
+    ),
+  );
 }
