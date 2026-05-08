@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
-import 'package:sendra/services/transaction_service.dart';
 import 'package:sendra/screens/receipt_screen.dart';
+import 'package:sendra/screens/transaction_service.dart';
+import 'package:sendra/services/exchange_rate_service.dart';
 
 class TransfersPage extends StatefulWidget {
   final String userId;
@@ -144,19 +145,15 @@ class _TransfersPageState extends State<TransfersPage>
 
   // ── Transaction list ───────────────────────────────────────────────────────
   Widget _buildList() {
-    // Build stream based on filter
     Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
       FSKeys.transactionsCollection,
     );
 
     if (_filterIndex == 1) {
-      // Sent only
       query = query.where(TxKeys.senderId, isEqualTo: widget.userId);
     } else if (_filterIndex == 2) {
-      // Received only
       query = query.where(TxKeys.receiverId, isEqualTo: widget.userId);
     } else {
-      // All — compound OR filter
       query = query.where(
         Filter.or(
           Filter(TxKeys.senderId, isEqualTo: widget.userId),
@@ -339,7 +336,6 @@ class _TxCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        // Tap to view receipt
         final tx = TransactionModel(
           id: doc.id,
           senderId: data[TxKeys.senderId] as String? ?? '',
@@ -355,6 +351,8 @@ class _TxCard extends StatelessWidget {
           feeTzs: feeTzs,
           totalDebitedTzs: totalDebited,
           receivedTzs: receivedTzs,
+          usdtToTzsRate:
+              (data['usdtToTzsRate'] as num?)?.toDouble() ?? AppRates.usdtToTzs,
           createdAt: dt,
           status: status,
         );
@@ -446,7 +444,6 @@ class _TxCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // Primary amount
                     Text(
                       isSender
                           ? '−${sentAmt.toStringAsFixed(2)} $sentCurrency'
@@ -457,7 +454,6 @@ class _TxCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    // Secondary line
                     const SizedBox(height: 2),
                     Text(
                       isSender
@@ -479,10 +475,8 @@ class _TxCard extends StatelessWidget {
             const SizedBox(height: 10),
             Row(
               children: [
-                // Tx ID
                 Text(txId, style: SText.tiny),
                 const Spacer(),
-                // Fee chip (sender only)
                 if (isSender) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -504,7 +498,6 @@ class _TxCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                 ],
-                // Status chip
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6,
@@ -524,7 +517,6 @@ class _TxCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                // Tap hint
                 const Icon(
                   Icons.chevron_right_rounded,
                   color: SColors.textDim,

@@ -1,11 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/screens/transaction_service.dart';
 import 'package:sendra/services/exchange_rate_service.dart';
-import 'package:sendra/services/transaction_service.dart';
 import 'package:sendra/screens/receipt_screen.dart';
 
 class SendMoneyPage extends StatefulWidget {
@@ -180,7 +179,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       ..forward();
   }
 
-  // ── Step 2: verify PIN → execute ──────────────────────────────────────────
+  // ── Step 2: verify PIN via Firestore → execute ────────────────────────────
   Future<void> _confirmAndSend() async {
     setState(() => _error = '');
     final pin = _pinCtrl.text.trim();
@@ -192,18 +191,22 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     setState(() => _sending = true);
 
     try {
-      // Re-authenticate with Firebase Auth — more secure than reading PIN from Firestore
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw 'Session expired. Please log in again.';
+      // Verify PIN directly from Firestore user document
+      final userDoc = await FirebaseFirestore.instance
+          .collection(FSKeys.usersCollection)
+          .doc(widget.sender.docId)
+          .get();
 
-      try {
-        await user.reauthenticateWithCredential(
-          EmailAuthProvider.credential(
-            email: '${widget.sender.phone}@sendra.app',
-            password: '${pin}_sendra',
-          ),
-        );
-      } on FirebaseAuthException {
+      if (!userDoc.exists) {
+        setState(() {
+          _error = 'Account not found. Please log in again.';
+          _sending = false;
+        });
+        return;
+      }
+
+      final storedPin = userDoc.data()?[FSKeys.pin] as String?;
+      if (storedPin == null || storedPin != pin) {
         setState(() {
           _error = 'Incorrect PIN. Please try again.';
           _sending = false;
@@ -211,6 +214,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         return;
       }
 
+      // PIN verified — proceed with transaction
       final tx = await TransactionService.sendMoney(
         sender: widget.sender,
         receiver: _receiver!,
@@ -341,7 +345,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Balance chip
         Container(
           padding: const EdgeInsets.all(14),
           decoration: SDecor.card,
@@ -380,7 +383,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 24),
 
-        // Currency chips
         Text('Sending Currency', style: SText.label),
         const SizedBox(height: 10),
         Row(
@@ -388,9 +390,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
             final sel = c == _currency;
             return Expanded(
               child: GestureDetector(
-                onTap: () => setState(() {
-                  _currency = c;
-                }),
+                onTap: () => setState(() => _currency = c),
                 child: Container(
                   margin: const EdgeInsets.only(right: 8),
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -430,7 +430,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         Text(_rateLabel, style: SText.tiny),
         const SizedBox(height: 20),
 
-        // Amount
         Text('Amount ($symbol)', style: SText.label),
         const SizedBox(height: 8),
         Container(
@@ -459,7 +458,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           ),
         ),
 
-        // Live conversion preview
         if (_sent > 0) ...[
           const SizedBox(height: 16),
           Container(
@@ -521,8 +519,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ],
 
         const SizedBox(height: 24),
-
-        // Recipient ID
         Text('Recipient Sendra ID', style: SText.label),
         const SizedBox(height: 8),
         Container(
@@ -580,7 +576,6 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Receiver card
         Container(
           padding: const EdgeInsets.all(20),
           decoration: SDecor.balanceCard,

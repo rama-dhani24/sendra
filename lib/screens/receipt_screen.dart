@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
-
 import 'dart:ui' as ui;
 import 'package:path_provider/path_provider.dart';
 import 'package:sendra/screens/transaction_service.dart';
