@@ -4,7 +4,7 @@ import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
 import 'package:sendra/screens/transaction_service.dart';
 import 'dart:ui' as ui;
-import 'dart:typed_data';
+//import 'dart:typed_data';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import 'package:share_plus/share_plus.dart';

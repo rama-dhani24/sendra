@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/screens/transaction_service.dart'; // ← correct path
 import 'package:sendra/screens/send_money_page.dart';
 import 'package:sendra/screens/notifications_screen.dart';
 import 'package:sendra/screens/profile_page.dart';
 import 'package:sendra/screens/exchange_page.dart';
-import 'package:sendra/screens/transaction_service.dart';
 import 'package:sendra/screens/wallet_page.dart';
 import 'package:sendra/screens/receive_page.dart';
 import 'package:sendra/screens/history_page.dart';
+import 'package:sendra/screens/withdraw_page.dart';
+import 'package:sendra/screens/bank_transfer_page.dart';
+import 'package:sendra/screens/bills_page.dart';
+import 'package:sendra/screens/airtime_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userId;
@@ -33,15 +37,15 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   int _navIndex = 0;
   bool _balanceHidden = false;
+  bool _isDark = true;
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
 
   String get _avatar {
     final parts = widget.userName.trim().split(' ');
-    if (parts.length >= 2) {
+    if (parts.length >= 2)
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
     return parts.first.isNotEmpty ? parts.first[0].toUpperCase() : 'U';
   }
 
@@ -62,39 +66,138 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  // ── Navigate to send money ─────────────────────────────────────────────────
-  void _openSend(double currentBalance) {
+  // ── Navigation helpers ────────────────────────────────────────────────────
+  void _openSend(double balance) {
     final sender = UserLookup(
       docId: widget.userId,
       fullName: widget.userName,
       accNumber: widget.accNumber,
-      phone: '',
-      balanceTzs: currentBalance,
+      phone: widget.phone,
+      balanceTzs: balance,
     );
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => SendMoneyPage(sender: sender)));
   }
 
-  void _openReceive() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ReceivePage(
-          userId: widget.userId,
-          userName: widget.userName,
-          accNumber: widget.accNumber,
+  void _openReceive() => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => ReceivePage(
+        userId: widget.userId,
+        userName: widget.userName,
+        accNumber: widget.accNumber,
+      ),
+    ),
+  );
+
+  void _openHistory() => Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => HistoryPage(userId: widget.userId)));
+
+  void _openWithdraw(double balance) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => WithdrawPage(userId: widget.userId, balanceTzs: balance),
+    ),
+  );
+
+  void _openBankTransfer(double balance) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) =>
+          BankTransferPage(userId: widget.userId, balanceTzs: balance),
+    ),
+  );
+
+  void _openBills(double balance) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => BillsPage(userId: widget.userId, balanceTzs: balance),
+    ),
+  );
+
+  void _openAirtime(double balance) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => AirtimePage(userId: widget.userId, balanceTzs: balance),
+    ),
+  );
+
+  void _showLanguagePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: SColors.navy,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: SColors.textDim,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Select Language',
+              style: TextStyle(
+                color: SColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ...[
+              {'flag': '🇹🇿', 'lang': 'Kiswahili', 'code': 'sw'},
+              {'flag': '🇬🇧', 'lang': 'English', 'code': 'en'},
+              {'flag': '🇫🇷', 'lang': 'Français', 'code': 'fr'},
+            ].map(
+              (l) => ListTile(
+                leading: Text(l['flag']!, style: const TextStyle(fontSize: 24)),
+                title: Text(
+                  l['lang']!,
+                  style: const TextStyle(
+                    color: SColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                trailing: l['code'] == 'en'
+                    ? const Icon(
+                        Icons.check_circle_rounded,
+                        color: SColors.gold,
+                        size: 20,
+                      )
+                    : null,
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '${l['lang']} coming soon',
+                        style: const TextStyle(color: SColors.navy),
+                      ),
+                      backgroundColor: SColors.gold,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  void _openHistory() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => HistoryPage(userId: widget.userId)),
-    );
-  }
-
-  // ── Build ──────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -133,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Home tab (streamed balance) ────────────────────────────────────────────
+  // ── Home tab ──────────────────────────────────────────────────────────────
   Widget _buildHomeTab() {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -168,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Header ─────────────────────────────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(double balance) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -213,7 +316,55 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
           const Spacer(),
-          // Notification bell with unread badge
+          GestureDetector(
+            onTap: _showLanguagePicker,
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: SColors.navyCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: SColors.navyLight),
+              ),
+              child: const Center(
+                child: Text('🌐', style: TextStyle(fontSize: 16)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {
+              setState(() => _isDark = !_isDark);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '${_isDark ? 'Dark' : 'Light'} mode coming soon',
+                    style: const TextStyle(color: SColors.navy),
+                  ),
+                  backgroundColor: SColors.gold,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: SColors.navyCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: SColors.navyLight),
+              ),
+              child: Icon(
+                _isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                color: SColors.textSub,
+                size: 18,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection(FSKeys.notificationsCollection)
@@ -229,16 +380,16 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
                 child: Container(
-                  width: 40,
-                  height: 40,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: SColors.navyCard,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: SColors.navyLight, width: 1),
+                    border: Border.all(color: SColors.navyLight),
                   ),
                   child: Stack(
                     children: [
-                      Center(
+                      const Center(
                         child: Icon(
                           Icons.notifications_outlined,
                           color: SColors.textSub,
@@ -269,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Balance card ───────────────────────────────────────────────────────────
+  // ── Balance card ──────────────────────────────────────────────────────────
   Widget _buildBalanceCard(double balance) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -335,7 +486,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Rates ticker ───────────────────────────────────────────────────────────
+  // ── Rates ticker ──────────────────────────────────────────────────────────
   Widget _buildRatesTicker() {
     final tickers = ['GBP', 'USD', 'EUR'].map(AppRates.tickerLabel).toList();
     return Padding(
@@ -391,73 +542,125 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Quick actions ──────────────────────────────────────────────────────────
+  // ── Quick actions ─────────────────────────────────────────────────────────
   Widget _buildQuickActions(double balance) {
-    final actions = [
-      {'label': 'Send', 'icon': Icons.arrow_upward_rounded},
-      {'label': 'Receive', 'icon': Icons.arrow_downward_rounded},
-      {'label': 'Exchange', 'icon': Icons.swap_horiz_rounded},
-      {'label': 'History', 'icon': Icons.receipt_long_rounded},
+    final row1 = [
+      {'label': 'Send', 'icon': Icons.send_rounded, 'primary': true},
+      {
+        'label': 'Receive',
+        'icon': Icons.arrow_downward_rounded,
+        'primary': false,
+      },
+      {'label': 'Withdraw', 'icon': Icons.output_rounded, 'primary': false},
+      {
+        'label': 'History',
+        'icon': Icons.receipt_long_rounded,
+        'primary': false,
+      },
     ];
+    final row2 = [
+      {
+        'label': 'Bank',
+        'icon': Icons.account_balance_outlined,
+        'primary': false,
+      },
+      {'label': 'Bills', 'icon': Icons.receipt_outlined, 'primary': false},
+      {
+        'label': 'Airtime',
+        'icon': Icons.phone_android_outlined,
+        'primary': false,
+      },
+      {'label': 'Exchange', 'icon': Icons.swap_horiz_rounded, 'primary': false},
+    ];
+
+    Widget actionBtn(Map<String, dynamic> a) {
+      final isPrimary = a['primary'] as bool;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () {
+            switch (a['label']) {
+              case 'Send':
+                _openSend(balance);
+                break;
+              case 'Receive':
+                _openReceive();
+                break;
+              case 'Withdraw':
+                _openWithdraw(balance);
+                break;
+              case 'History':
+                _openHistory();
+                break;
+              case 'Bank':
+                _openBankTransfer(balance);
+                break;
+              case 'Bills':
+                _openBills(balance);
+                break;
+              case 'Airtime':
+                _openAirtime(balance);
+                break;
+              case 'Exchange':
+                setState(() => _navIndex = 1);
+                break;
+            }
+          },
+          child: Column(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  gradient: isPrimary
+                      ? const LinearGradient(
+                          colors: [SColors.gold, SColors.goldDark],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: isPrimary ? null : SColors.navyCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: isPrimary
+                      ? null
+                      : Border.all(color: SColors.navyLight, width: 1),
+                ),
+                child: Icon(
+                  a['icon'] as IconData,
+                  color: isPrimary ? SColors.navy : SColors.textSub,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                a['label'] as String,
+                style: TextStyle(
+                  color: isPrimary ? SColors.gold : SColors.textSub,
+                  fontSize: 11,
+                  fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: actions.map((a) {
-          final isSend = a['label'] == 'Send';
-          return GestureDetector(
-            onTap: () {
-              if (a['label'] == 'Send') _openSend(balance);
-              if (a['label'] == 'Exchange') setState(() => _navIndex = 1);
-              if (a['label'] == 'Receive') _openReceive();
-              if (a['label'] == 'History') _openHistory();
-            },
-            child: Column(
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    gradient: isSend
-                        ? const LinearGradient(
-                            colors: [SColors.gold, SColors.goldDark],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: isSend ? null : SColors.navyCard,
-                    borderRadius: BorderRadius.circular(18),
-                    border: isSend
-                        ? null
-                        : Border.all(color: SColors.navyLight, width: 1),
-                  ),
-                  child: Icon(
-                    a['icon'] as IconData,
-                    color: isSend ? SColors.navy : SColors.textSub,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  a['label'] as String,
-                  style: TextStyle(
-                    color: isSend ? SColors.gold : SColors.textSub,
-                    fontSize: 12,
-                    fontWeight: isSend ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+      child: Column(
+        children: [
+          Row(children: row1.map(actionBtn).toList()),
+          const SizedBox(height: 16),
+          Row(children: row2.map(actionBtn).toList()),
+        ],
       ),
     );
   }
 
-  // ── Send panel ─────────────────────────────────────────────────────────────
+  // ── Send panel ────────────────────────────────────────────────────────────
   Widget _buildSendPanel(double balance) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
       child: GestureDetector(
         onTap: () => _openSend(balance),
         child: Container(
@@ -500,7 +703,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Account number strip ───────────────────────────────────────────────────
+  // ── Account number ────────────────────────────────────────────────────────
   Widget _buildAccNumber() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
@@ -527,7 +730,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Transaction history header ─────────────────────────────────────────────
+  // ── Tx header ─────────────────────────────────────────────────────────────
   Widget _buildTxHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
@@ -535,16 +738,19 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           Text(AppStrings.recentTx, style: SText.sectionTitle),
           const Spacer(),
-          Text(
-            AppStrings.seeAll,
-            style: const TextStyle(color: SColors.gold, fontSize: 13),
+          GestureDetector(
+            onTap: _openHistory,
+            child: Text(
+              AppStrings.seeAll,
+              style: const TextStyle(color: SColors.gold, fontSize: 13),
+            ),
           ),
         ],
       ),
     );
   }
 
-  // ── Live transaction list from Firestore ───────────────────────────────────
+  // ── Tx list ───────────────────────────────────────────────────────────────
   Widget _buildTxList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -572,7 +778,6 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         final docs = snap.data?.docs ?? [];
-
         if (docs.isEmpty) {
           return Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
@@ -596,6 +801,8 @@ class _HomeScreenState extends State<HomeScreen>
                 : data[TxKeys.senderName] as String? ?? '';
             final ts = data[TxKeys.createdAt] as Timestamp?;
             final dt = ts?.toDate() ?? DateTime.now();
+            final sentCur = data[TxKeys.sentCurrency] as String? ?? 'TZS';
+            final flag = AppRates.currencyFlags[sentCur] ?? '💰';
 
             return Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -613,12 +820,8 @@ class _HomeScreenState extends State<HomeScreen>
                             : SColors.green.withOpacity(0.10),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Icon(
-                        isSender
-                            ? Icons.arrow_upward_rounded
-                            : Icons.arrow_downward_rounded,
-                        color: isSender ? SColors.red : SColors.green,
-                        size: 20,
+                      child: Center(
+                        child: Text(flag, style: const TextStyle(fontSize: 18)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -660,7 +863,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Bottom nav ─────────────────────────────────────────────────────────────
+  // ── Bottom nav ────────────────────────────────────────────────────────────
   Widget _buildNav() {
     final items = [
       {'icon': Icons.home_rounded, 'label': 'Home'},
@@ -669,7 +872,7 @@ class _HomeScreenState extends State<HomeScreen>
       {'icon': Icons.person_outline_rounded, 'label': 'Profile'},
     ];
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: SColors.navyCard,
         border: Border(top: BorderSide(color: SColors.navyLight, width: 1)),
       ),
@@ -730,22 +933,18 @@ class _HomeScreenState extends State<HomeScreen>
     final today = DateTime(now.year, now.month, now.day);
     final d = DateTime(dt.year, dt.month, dt.day);
     final h = dt.hour.toString().padLeft(2, '0');
-    final min = dt.minute.toString().padLeft(2, '0');
-    if (d == today) return 'Today, $h:$min';
-    if (d == today.subtract(const Duration(days: 1)))
-      return 'Yesterday, $h:$min';
+    final m = dt.minute.toString().padLeft(2, '0');
+    if (d == today) return 'Today, $h:$m';
+    if (d == today.subtract(const Duration(days: 1))) return 'Yesterday, $h:$m';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }
 
-// ─── Stat chip (reads live from Firestore) ─────────────────────────────────
+// ─── Stat chip ────────────────────────────────────────────────────────────
 class _StatChip extends StatelessWidget {
   final IconData icon;
-  final String label;
+  final String label, userId, type;
   final Color color;
-  final String userId;
-  final String type; // 'credit' | 'debit'
-
   const _StatChip({
     required this.icon,
     required this.label,
@@ -764,11 +963,9 @@ class _StatChip extends StatelessWidget {
             .where(NotifKeys.type, isEqualTo: type)
             .snapshots(),
         builder: (ctx, snap) {
-          final docs = snap.data?.docs ?? [];
-          final total = docs.fold<double>(0, (sum, d) {
+          final total = (snap.data?.docs ?? []).fold<double>(0, (sum, d) {
             final raw = (d.data()! as Map<String, dynamic>)[NotifKeys.amount];
-            final val = (raw as num?)?.toDouble() ?? 0.0;
-            return sum + val;
+            return sum + ((raw as num?)?.toDouble() ?? 0.0);
           });
           final prefix = type == 'credit' ? '+' : '-';
           final display = total == 0
