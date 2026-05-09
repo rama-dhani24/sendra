@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
-import 'package:sendra/screens/receipt_screen.dart';
 import 'package:sendra/screens/transaction_service.dart';
+import 'package:sendra/screens/receipt_screen.dart';
 
 class HistoryPage extends StatefulWidget {
   final String userId;
@@ -334,22 +334,60 @@ class _TxCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Build TransactionModel from the Firestore doc
-    final tx = TransactionModel.fromDoc(doc);
-    final isSender = tx.senderId == userId;
-    final flag = AppRates.currencyFlags[tx.sentCurrency] ?? '💰';
-    final txId = '#${doc.id.substring(0, 8).toUpperCase()}';
-    final time =
-        '${tx.createdAt.hour.toString().padLeft(2, '0')}:'
-        '${tx.createdAt.minute.toString().padLeft(2, '0')}';
+    final data = doc.data()! as Map<String, dynamic>;
+    final isSender = data[TxKeys.senderId] == userId;
 
-    final counterparty = isSender ? tx.receiverName : tx.senderName;
-    final counterAcc = isSender ? tx.receiverAccNumber : tx.senderAccNumber;
+    final sentCurrency = data[TxKeys.sentCurrency] as String? ?? 'TZS';
+    final sentAmt = (data[TxKeys.sentAmount] as num?)?.toDouble() ?? 0;
+    final amountTzs = (data[TxKeys.amountTzs] as num?)?.toDouble() ?? 0;
+    final feeTzs = (data[TxKeys.feeTzs] as num?)?.toDouble() ?? 0;
+    final totalDebited =
+        (data[TxKeys.totalDebitedTzs] as num?)?.toDouble() ?? 0;
+    final receivedTzs = (data[TxKeys.receivedTzs] as num?)?.toDouble() ?? 0;
+    final usdtToTzsRate =
+        (data['usdtToTzsRate'] as num?)?.toDouble() ?? AppRates.usdtToTzs;
+
+    final counterparty = isSender
+        ? data[TxKeys.receiverName] as String? ?? ''
+        : data[TxKeys.senderName] as String? ?? '';
+    final counterAcc = isSender
+        ? data[TxKeys.receiverAccNumber] as String? ?? ''
+        : data[TxKeys.senderAccNumber] as String? ?? '';
+
+    final ts = data[TxKeys.createdAt] as Timestamp?;
+    final dt = ts?.toDate() ?? DateTime.now();
+    final time =
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+    final flag = AppRates.currencyFlags[sentCurrency] ?? '💰';
+    final txId = '#${doc.id.substring(0, 8).toUpperCase()}';
+    final status = data[TxKeys.status] as String? ?? 'completed';
 
     return GestureDetector(
-      onTap: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => ReceiptScreen(transaction: tx))),
+      onTap: () {
+        final tx = TransactionModel(
+          id: doc.id,
+          senderId: data[TxKeys.senderId] as String? ?? '',
+          senderName: data[TxKeys.senderName] as String? ?? '',
+          senderAccNumber: data[TxKeys.senderAccNumber] as String? ?? '',
+          receiverId: data[TxKeys.receiverId] as String? ?? '',
+          receiverName: data[TxKeys.receiverName] as String? ?? '',
+          receiverAccNumber: data[TxKeys.receiverAccNumber] as String? ?? '',
+          sentCurrency: sentCurrency,
+          sentAmount: sentAmt,
+          usdtAmount: (data[TxKeys.usdtAmount] as num?)?.toDouble() ?? 0,
+          amountTzs: amountTzs,
+          feeTzs: feeTzs,
+          totalDebitedTzs: totalDebited,
+          receivedTzs: receivedTzs,
+          usdtToTzsRate: usdtToTzsRate,
+          createdAt: dt,
+          status: status,
+        );
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ReceiptScreen(transaction: tx)),
+        );
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(16),
@@ -360,7 +398,6 @@ class _TxCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // Main row
             Row(
               children: [
                 SizedBox(
@@ -431,8 +468,8 @@ class _TxCard extends StatelessWidget {
                   children: [
                     Text(
                       isSender
-                          ? '−${tx.sentAmount.toStringAsFixed(2)} ${tx.sentCurrency}'
-                          : '+TZS ${Validators.formatNumber(tx.receivedTzs)}',
+                          ? '−${sentAmt.toStringAsFixed(2)} $sentCurrency'
+                          : '+TZS ${Validators.formatNumber(receivedTzs)}',
                       style: TextStyle(
                         color: isSender ? SColors.red : SColors.green,
                         fontSize: 14,
@@ -442,8 +479,8 @@ class _TxCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       isSender
-                          ? '−TZS ${Validators.formatNumber(tx.totalDebitedTzs)} total'
-                          : '+TZS ${Validators.formatNumber(tx.amountTzs)} gross',
+                          ? '−TZS ${Validators.formatNumber(totalDebited)} total'
+                          : '+TZS ${Validators.formatNumber(amountTzs)} gross',
                       style: const TextStyle(
                         color: SColors.textDim,
                         fontSize: 10,
@@ -453,8 +490,6 @@ class _TxCard extends StatelessWidget {
                 ),
               ],
             ),
-
-            // Detail row
             const SizedBox(height: 10),
             Container(height: 1, color: SColors.navyBorder),
             const SizedBox(height: 8),
@@ -462,15 +497,15 @@ class _TxCard extends StatelessWidget {
               children: [
                 Text(txId, style: SText.tiny),
                 const Spacer(),
-                if (isSender && tx.feeTzs > 0) ...[
+                if (isSender && feeTzs > 0) ...[
                   _badge(
-                    'Fee TZS ${Validators.formatNumber(tx.feeTzs)}',
+                    'Fee TZS ${Validators.formatNumber(feeTzs)}',
                     SColors.red,
                   ),
                   const SizedBox(width: 6),
                 ],
                 _badge(
-                  tx.status[0].toUpperCase() + tx.status.substring(1),
+                  status[0].toUpperCase() + status.substring(1),
                   SColors.green,
                 ),
                 const SizedBox(width: 6),

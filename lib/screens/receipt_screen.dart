@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
-import 'dart:ui' as ui;
-import 'package:path_provider/path_provider.dart';
 import 'package:sendra/screens/transaction_service.dart';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ReceiptScreen extends StatelessWidget {
   final TransactionModel transaction;
@@ -305,7 +309,6 @@ class ReceiptScreen extends StatelessWidget {
     );
   }
 
-  // Extracted to avoid quote conflict inside string interpolation
   String _fmtSent(TransactionModel tx) {
     final dp = tx.sentCurrency == 'TZS' ? 0 : 4;
     return '${tx.sentAmount.toStringAsFixed(dp)} ${tx.sentCurrency}';
@@ -320,14 +323,28 @@ class ReceiptScreen extends StatelessWidget {
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/receipt_${transaction.id}.png');
-      await file.writeAsBytes(byteData.buffer.asUint8List());
+      final bytes = byteData.buffer.asUint8List();
+
+      if (kIsWeb) {
+        // Web: trigger browser download
+        final blob = html.Blob([bytes], 'image/png');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute('download', 'receipt_${transaction.id}.png')
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } else {
+        // Mobile/Desktop: save to documents directory
+        final dir = await getApplicationDocumentsDirectory();
+        final file = File('\${dir.path}/receipt_\${transaction.id}.png');
+        await file.writeAsBytes(bytes);
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
-              'Receipt saved to documents',
+              'Receipt downloaded!',
               style: TextStyle(color: SColors.navy),
             ),
             backgroundColor: SColors.gold,
@@ -360,22 +377,35 @@ class ReceiptScreen extends StatelessWidget {
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/receipt_${transaction.id}.png');
-      await file.writeAsBytes(byteData.buffer.asUint8List());
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text:
-            'Sendra Receipt · '
-            '${transaction.sentAmount.toStringAsFixed(2)} '
-            '${transaction.sentCurrency} -> '
-            'TZS ${Validators.formatNumber(transaction.receivedTzs)}',
-      );
+      final bytes = byteData.buffer.asUint8List();
+
+      if (kIsWeb) {
+        // Web: trigger download as fallback (share not supported on web)
+        final blob = html.Blob([bytes], 'image/png');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute('download', 'receipt_\${transaction.id}.png')
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } else {
+        // Mobile/Desktop: use share sheet
+        final dir = await getTemporaryDirectory();
+        final file = File('\${dir.path}/receipt_\${transaction.id}.png');
+        await file.writeAsBytes(bytes);
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text:
+              'Sendra Receipt · '
+              '\${transaction.sentAmount.toStringAsFixed(2)} '
+              '\${transaction.sentCurrency} -> '
+              'TZS \${Validators.formatNumber(transaction.receivedTzs)}',
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not share receipt: $e'),
+            content: Text('Could not share receipt: \$e'),
             backgroundColor: SColors.red,
             behavior: SnackBarBehavior.floating,
           ),

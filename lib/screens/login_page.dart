@@ -47,7 +47,7 @@ class _LoginPageState extends State<LoginPage>
     super.dispose();
   }
 
-  // Must match _authPassword() in signup_page.dart
+  // Firebase Auth password format — must match signup_page.dart
   String _authPassword(String pin) => '${pin}_sendra';
 
   Future<void> _login() async {
@@ -78,7 +78,8 @@ class _LoginPageState extends State<LoginPage>
     });
 
     try {
-      // ── Step 1: Firebase Auth sign-in ────────────────────────────────────
+      // ── Step 1: Sign in with Firebase Auth ───────────────────────────────
+      // Auth uses ${pin}_sendra format set at signup
       final email = '$phone@sendra.app';
       final password = _authPassword(pin);
 
@@ -120,7 +121,20 @@ class _LoginPageState extends State<LoginPage>
         return;
       }
 
+      // ── Step 3: Sync Firestore PIN with Auth PIN (keep in sync) ──────────
+      // If user's Firestore pin differs from what they logged in with,
+      // update Firestore to match Auth (Auth is source of truth at login)
       final data = snap.data()!;
+      final firestorePin = (data[FSKeys.pin] ?? '').toString().trim();
+      if (firestorePin != pin) {
+        // Silently sync Firestore PIN to match the one that worked in Auth
+        await FirebaseFirestore.instance
+            .collection(FSKeys.usersCollection)
+            .doc(uid)
+            .update({FSKeys.pin: pin});
+      }
+
+      // ── Step 4: Navigate to home ──────────────────────────────────────────
       setState(() => _loading = false);
       await Future.delayed(const Duration(milliseconds: 100));
       if (!mounted) return;
@@ -149,7 +163,7 @@ class _LoginPageState extends State<LoginPage>
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _errorMessage = 'Unable to log in right now.';
@@ -395,7 +409,6 @@ class _LoginPageState extends State<LoginPage>
 }
 
 // ─── Shared widgets ──────────────────────────────────────────────────────────
-
 class _SendraLogo extends StatelessWidget {
   const _SendraLogo();
   @override

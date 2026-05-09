@@ -160,9 +160,9 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       _animCtrl
         ..reset()
         ..forward();
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'Network error. Please try again.';
+        _error = e.toString();
         _searching = false;
       });
     }
@@ -179,7 +179,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       ..forward();
   }
 
-  // ── Step 2: verify PIN via Firestore → execute ────────────────────────────
+  // ── Step 2: verify PIN via Firestore, then execute ──────────────────────
   Future<void> _confirmAndSend() async {
     setState(() => _error = '');
     final pin = _pinCtrl.text.trim();
@@ -191,13 +191,13 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     setState(() => _sending = true);
 
     try {
-      // Verify PIN directly from Firestore user document
-      final userDoc = await FirebaseFirestore.instance
+      // Read PIN directly from Firestore — most reliable, no Auth format issues
+      final userSnap = await FirebaseFirestore.instance
           .collection(FSKeys.usersCollection)
           .doc(widget.sender.docId)
           .get();
 
-      if (!userDoc.exists) {
+      if (!userSnap.exists) {
         setState(() {
           _error = 'Account not found. Please log in again.';
           _sending = false;
@@ -205,8 +205,9 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         return;
       }
 
-      final storedPin = userDoc.data()?[FSKeys.pin] as String?;
-      if (storedPin == null || storedPin != pin) {
+      final storedPin = (userSnap.data()![FSKeys.pin] ?? '').toString().trim();
+
+      if (storedPin != pin) {
         setState(() {
           _error = 'Incorrect PIN. Please try again.';
           _sending = false;
@@ -214,7 +215,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         return;
       }
 
-      // PIN verified — proceed with transaction
+      // PIN correct — execute transaction
       final tx = await TransactionService.sendMoney(
         sender: widget.sender,
         receiver: _receiver!,
