@@ -20,7 +20,7 @@ class _WithdrawPageState extends State<WithdrawPage> {
   final _amountCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   String _method = 'M-Pesa';
-  bool _loading = false;
+  final bool _loading = false;
   String _error = '';
 
   static const _methods = ['M-Pesa', 'Tigo Pesa', 'Airtel Money', 'Halotel'];

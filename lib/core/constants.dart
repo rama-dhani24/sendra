@@ -192,8 +192,9 @@ class AppRates {
       usdtToTzsAmount(toUsdt(currency, amount));
 
   static String tickerLabel(String currency) {
-    if (currency == 'USDT')
+    if (currency == 'USDT') {
       return '1 USDT = ${usdtToTzs.toStringAsFixed(0)} TZS';
+    }
     return '1 $currency ≈ ${toTzs(currency, 1.0).toStringAsFixed(0)} TZS';
   }
 

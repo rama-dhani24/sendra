@@ -73,7 +73,7 @@ class NotificationsScreen extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
             itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (ctx, i) {
               final data = docs[i].data()! as Map<String, dynamic>;
               final docId = docs[i].id;

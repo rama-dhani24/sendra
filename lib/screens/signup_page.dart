@@ -114,29 +114,33 @@ class _SignUpPageState extends State<SignUpPage>
         ..reset()
         ..forward();
     } on _SignUpFlowException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _errorMessage = e.message;
           _loading = false;
         });
+      }
     } on FirebaseException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _errorMessage = _friendlyMessage(e);
           _loading = false;
         });
+      }
     } on TimeoutException {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _errorMessage = 'Request timed out. Please try again.';
           _loading = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _errorMessage = 'Unable to continue right now.';
           _loading = false;
         });
+      }
     }
   }
 
@@ -212,33 +216,37 @@ class _SignUpPageState extends State<SignUpPage>
       _showSuccessDialog(accNumber);
     } on _SignUpFlowException catch (e) {
       await credential?.user?.delete();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _errorMessage = e.message;
           _generatedAccNumber = '';
         });
+      }
     } on FirebaseException catch (e) {
       await credential?.user?.delete();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _errorMessage = _friendlyMessage(e);
         });
+      }
     } on TimeoutException {
       await credential?.user?.delete();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _errorMessage = 'Signup timed out. Check your connection.';
         });
+      }
     } catch (_) {
       await credential?.user?.delete();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _errorMessage = 'Unable to create the account right now.';
         });
+      }
     }
   }
 

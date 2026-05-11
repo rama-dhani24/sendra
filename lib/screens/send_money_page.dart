@@ -302,7 +302,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
   Widget _buildStepBar() {
     return Row(
       children: List.generate(5, (i) {
-        if (i.isOdd)
+        if (i.isOdd) {
           return Expanded(
             child: Container(
               height: 2,
@@ -310,6 +310,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               color: _step >= (i ~/ 2) + 1 ? SColors.gold : SColors.navyLight,
             ),
           );
+        }
         final idx = i ~/ 2;
         final active = _step >= idx;
         return Container(

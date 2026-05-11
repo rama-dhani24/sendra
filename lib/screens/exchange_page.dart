@@ -369,7 +369,7 @@ class _FxRatesTab extends StatelessWidget {
             _SectionHeader(
               icon: '🇹🇿',
               title: 'Rates vs TZS',
-              sub: '1 unit = X TZS (after ${spreadPct}% spread)',
+              sub: '1 unit = X TZS (after $spreadPct% spread)',
             ),
             const SizedBox(height: 10),
             ..._fiats.map(
@@ -1155,8 +1155,9 @@ class _CrossRateGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final pairs = <({String from, String to})>[];
     for (int i = 0; i < currencies.length; i++)
-      for (int j = i + 1; j < currencies.length; j++)
+      for (int j = i + 1; j < currencies.length; j++) {
         pairs.add((from: currencies[i], to: currencies[j]));
+      }
 
     return Column(
       children: pairs.map((p) {

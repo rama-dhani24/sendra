@@ -108,7 +108,7 @@ class _BillsPageState extends State<BillsPage> {
               ),
             ),
           ),
-        )).toList(),
+        )),
       ],
     );
   }

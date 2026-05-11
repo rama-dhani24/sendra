@@ -44,8 +44,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   String get _avatar {
     final parts = widget.userName.trim().split(' ');
-    if (parts.length >= 2)
+    if (parts.length >= 2) {
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
     return parts.first.isNotEmpty ? parts.first[0].toUpperCase() : 'U';
   }
 
