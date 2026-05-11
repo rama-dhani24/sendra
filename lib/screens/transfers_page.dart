@@ -4,7 +4,7 @@ import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
 import 'package:sendra/screens/receipt_screen.dart';
 import 'package:sendra/screens/transaction_service.dart';
-import 'package:sendra/services/exchange_rate_service.dart';
+//import 'package:sendra/services/exchange_rate_service.dart';
 
 class TransfersPage extends StatefulWidget {
   final String userId;

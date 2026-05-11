@@ -4,13 +4,11 @@ import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
 import 'package:sendra/screens/transaction_service.dart';
 import 'dart:ui' as ui;
-//import 'dart:typed_data';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:universal_html/html.dart' as html;
 
 class ReceiptScreen extends StatelessWidget {
   final TransactionModel transaction;
@@ -34,7 +32,6 @@ class ReceiptScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
                 child: Column(
                   children: [
-                    // Success badge
                     Container(
                       width: 80,
                       height: 80,
@@ -69,14 +66,12 @@ class ReceiptScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 32),
 
-                    // Receipt card
                     RepaintBoundary(
                       key: _receiptKey,
                       child: Container(
                         decoration: SDecor.balanceCard,
                         child: Column(
                           children: [
-                            // Header
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: const BoxDecoration(
@@ -144,7 +139,6 @@ class ReceiptScreen extends StatelessWidget {
                               ),
                             ),
 
-                            // Receipt rows
                             Padding(
                               padding: const EdgeInsets.all(16),
                               child: Column(
@@ -204,7 +198,6 @@ class ReceiptScreen extends StatelessWidget {
 
                             const _TearLine(),
 
-                            // Footer
                             Padding(
                               padding: const EdgeInsets.all(16),
                               child: Row(
@@ -233,7 +226,6 @@ class ReceiptScreen extends StatelessWidget {
               ),
             ),
 
-            // Bottom buttons
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
               child: Column(
@@ -243,46 +235,14 @@ class ReceiptScreen extends StatelessWidget {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () => _downloadReceipt(context),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(
-                              color: SColors.navyLight,
-                              width: 1,
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: const Text(
-                            'Download',
-                            style: TextStyle(
-                              color: SColors.textSub,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          child: const Text('Download'),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () => _shareReceipt(context),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: SColors.gold.withOpacity(0.5),
-                              width: 1,
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: const Text(
-                            'Share',
-                            style: TextStyle(
-                              color: SColors.gold,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          child: const Text('Share'),
                         ),
                       ),
                     ],
@@ -319,51 +279,42 @@ class ReceiptScreen extends StatelessWidget {
       final boundary =
           _receiptKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary?;
+
       if (boundary == null) return;
+
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
       if (byteData == null) return;
+
       final bytes = byteData.buffer.asUint8List();
 
       if (kIsWeb) {
-        // Web: trigger browser download
         final blob = html.Blob([bytes], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
+
+        html.AnchorElement(href: url)
           ..setAttribute('download', 'receipt_${transaction.id}.png')
           ..click();
+
         html.Url.revokeObjectUrl(url);
       } else {
-        // Mobile/Desktop: save to documents directory
         final dir = await getApplicationDocumentsDirectory();
-        final file = File('\${dir.path}/receipt_\${transaction.id}.png');
+        final file = File('${dir.path}/receipt_${transaction.id}.png');
+
         await file.writeAsBytes(bytes);
       }
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Receipt downloaded!',
-              style: TextStyle(color: SColors.navy),
-            ),
-            backgroundColor: SColors.gold,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Receipt downloaded!')));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not save receipt: $e'),
-            backgroundColor: SColors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not save receipt: $e')));
       }
     }
   }
@@ -373,43 +324,45 @@ class ReceiptScreen extends StatelessWidget {
       final boundary =
           _receiptKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary?;
+
       if (boundary == null) return;
+
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
       if (byteData == null) return;
+
       final bytes = byteData.buffer.asUint8List();
 
       if (kIsWeb) {
-        // Web: trigger download as fallback (share not supported on web)
         final blob = html.Blob([bytes], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', 'receipt_\${transaction.id}.png')
+
+        html.AnchorElement(href: url)
+          ..setAttribute('download', 'receipt_${transaction.id}.png')
           ..click();
+
         html.Url.revokeObjectUrl(url);
       } else {
-        // Mobile/Desktop: use share sheet
         final dir = await getTemporaryDirectory();
-        final file = File('\${dir.path}/receipt_\${transaction.id}.png');
+        final file = File('${dir.path}/receipt_${transaction.id}.png');
+
         await file.writeAsBytes(bytes);
+
         await Share.shareXFiles(
           [XFile(file.path)],
           text:
               'Sendra Receipt · '
-              '\${transaction.sentAmount.toStringAsFixed(2)} '
-              '\${transaction.sentCurrency} -> '
-              'TZS \${Validators.formatNumber(transaction.receivedTzs)}',
+              '${transaction.sentAmount.toStringAsFixed(2)} '
+              '${transaction.sentCurrency} -> '
+              'TZS ${Validators.formatNumber(transaction.receivedTzs)}',
         );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not share receipt: \$e'),
-            backgroundColor: SColors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not share receipt: $e')));
       }
     }
   }
@@ -428,7 +381,6 @@ class ReceiptScreen extends StatelessWidget {
                 color: SColors.textDim,
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
               ),
             ),
           ),
@@ -447,19 +399,15 @@ class ReceiptScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 4, child: Text(label, style: SText.caption)),
-          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: SText.caption)),
           Expanded(
-            flex: 5,
             child: Text(
               value,
               textAlign: TextAlign.right,
               style: TextStyle(
                 color: valueColor,
-                fontSize: bold ? 14 : 13,
-                fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
               ),
             ),
           ),
@@ -483,8 +431,10 @@ class ReceiptScreen extends StatelessWidget {
       'Nov',
       'Dec',
     ];
+
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
+
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $h:$m';
   }
 }
