@@ -14,6 +14,10 @@ import 'package:sendra/screens/withdraw_page.dart';
 import 'package:sendra/screens/bank_transfer_page.dart';
 import 'package:sendra/screens/bills_page.dart';
 import 'package:sendra/screens/airtime_page.dart';
+import 'package:provider/provider.dart';
+import 'package:sendra/providers/app_providers.dart';
+import 'package:sendra/screens/language_page.dart';
+import 'package:sendra/screens/theme_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userId;
@@ -37,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   int _navIndex = 0;
   bool _balanceHidden = false;
-  bool _isDark = true;
+  final bool _isDark = true;
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -119,84 +123,6 @@ class _HomeScreenState extends State<HomeScreen>
       builder: (_) => AirtimePage(userId: widget.userId, balanceTzs: balance),
     ),
   );
-
-  void _showLanguagePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: SColors.navy,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: SColors.textDim,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Select Language',
-              style: TextStyle(
-                color: SColors.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ...[
-              {'flag': '🇹🇿', 'lang': 'Kiswahili', 'code': 'sw'},
-              {'flag': '🇬🇧', 'lang': 'English', 'code': 'en'},
-              {'flag': '🇫🇷', 'lang': 'Français', 'code': 'fr'},
-            ].map(
-              (l) => ListTile(
-                leading: Text(l['flag']!, style: const TextStyle(fontSize: 24)),
-                title: Text(
-                  l['lang']!,
-                  style: const TextStyle(
-                    color: SColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                trailing: l['code'] == 'en'
-                    ? const Icon(
-                        Icons.check_circle_rounded,
-                        color: SColors.gold,
-                        size: 20,
-                      )
-                    : null,
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${l['lang']} coming soon',
-                        style: const TextStyle(color: SColors.navy),
-                      ),
-                      backgroundColor: SColors.gold,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
@@ -317,8 +243,13 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
           const Spacer(),
+          // ── Language picker button ─────────────────────────────────────
           GestureDetector(
-            onTap: _showLanguagePicker,
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const LanguagePage()));
+            },
             child: Container(
               width: 38,
               height: 38,
@@ -333,22 +264,12 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(width: 8),
+          // ── Theme toggle button ────────────────────────────────────────
           GestureDetector(
             onTap: () {
-              setState(() => _isDark = !_isDark);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    '${_isDark ? 'Dark' : 'Light'} mode coming soon',
-                    style: const TextStyle(color: SColors.navy),
-                  ),
-                  backgroundColor: SColors.gold,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ThemePage()));
             },
             child: Container(
               width: 38,

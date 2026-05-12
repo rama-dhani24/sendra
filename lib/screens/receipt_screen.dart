@@ -8,7 +8,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:universal_html/html.dart' as html;
+import 'package:sendra/core/html_stub.dart'
+    if (dart.library.html) 'dart:html'
+    as html;
 
 class ReceiptScreen extends StatelessWidget {
   final TransactionModel transaction;
@@ -292,16 +294,16 @@ class ReceiptScreen extends StatelessWidget {
       if (kIsWeb) {
         final blob = html.Blob([bytes], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
-
-        html.AnchorElement(href: url)
-          ..setAttribute('download', 'receipt_${transaction.id}.png')
+        // ✅ Use .download property directly — avoids setAttribute error on stub
+        final anchor = html.AnchorElement(href: url)
+          ..download = 'receipt_${transaction.id}.png'
           ..click();
-
         html.Url.revokeObjectUrl(url);
+        // ignore: unused_local_variable
+        final _ = anchor;
       } else {
         final dir = await getApplicationDocumentsDirectory();
         final file = File('${dir.path}/receipt_${transaction.id}.png');
-
         await file.writeAsBytes(bytes);
       }
 
@@ -337,16 +339,16 @@ class ReceiptScreen extends StatelessWidget {
       if (kIsWeb) {
         final blob = html.Blob([bytes], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
-
-        html.AnchorElement(href: url)
-          ..setAttribute('download', 'receipt_${transaction.id}.png')
+        // ✅ Use .download property directly — avoids setAttribute error on stub
+        final anchor = html.AnchorElement(href: url)
+          ..download = 'receipt_${transaction.id}.png'
           ..click();
-
         html.Url.revokeObjectUrl(url);
+        // ignore: unused_local_variable
+        final _ = anchor;
       } else {
         final dir = await getTemporaryDirectory();
         final file = File('${dir.path}/receipt_${transaction.id}.png');
-
         await file.writeAsBytes(bytes);
 
         await Share.shareXFiles(

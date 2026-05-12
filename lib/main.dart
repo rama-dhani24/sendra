@@ -1,31 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:sendra/core/theme.dart';
+import 'package:provider/provider.dart';
+import 'package:sendra/core/theme.dart'; // provides SColors, STheme.light, STheme.dark
 import 'package:sendra/firebase_options.dart';
 import 'package:sendra/screens/login_page.dart';
 import 'package:sendra/services/exchange_rate_service.dart';
+import 'package:sendra/providers/app_providers.dart'; // provides ThemeProvider, LocaleProvider
+import 'package:sendra/core/app_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() async {
-  // 1. Ensure bindings are initialized first
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // 2. Initialize Firebase
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-
-    // 3. Start listening to live exchange rates from Firestore
-    // AppRates fields will be updated automatically whenever
-    // the Cloud Function writes new rates (every 30 min).
     ExchangeRateService.instance.init();
   } catch (e) {
     debugPrint('Firebase Initialization Error: $e');
-    // App continues with AppRates fallback values if Firebase fails
   }
 
-  // 4. UI overlay settings
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -35,12 +31,22 @@ void main() async {
     ),
   );
 
-  // 5. Lock orientation and run the app
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]).then((_) {
-    runApp(const SendraApp());
-  });
+  // Init providers before runApp so first frame has correct values
+  final themeProvider = ThemeProvider();
+  final localeProvider = LocaleProvider();
+  await Future.wait([themeProvider.init(), localeProvider.init()]);
+
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: themeProvider),
+        ChangeNotifierProvider.value(value: localeProvider),
+      ],
+      child: const SendraApp(),
+    ),
+  );
 }
 
 class SendraApp extends StatelessWidget {
@@ -48,10 +54,28 @@ class SendraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
+    final localeProvider = context.watch<LocaleProvider>();
+
     return MaterialApp(
       title: 'Sendra',
       debugShowCheckedModeBanner: false,
-      theme: STheme.dark,
+
+      // Theme — dark / light / system
+      theme: STheme.light,
+      darkTheme: STheme.dark,
+      themeMode: themeProvider.mode,
+
+      // Locale
+      locale: localeProvider.locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+
       home: const LoginPage(),
     );
   }
