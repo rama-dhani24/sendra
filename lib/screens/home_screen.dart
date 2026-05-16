@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
-import 'package:sendra/screens/transaction_service.dart'; // ← correct path
+import 'package:sendra/core/app_localizations.dart';
+import 'package:sendra/screens/transaction_service.dart';
 import 'package:sendra/screens/send_money_page.dart';
 import 'package:sendra/screens/notifications_screen.dart';
 import 'package:sendra/screens/profile_page.dart';
@@ -16,8 +17,6 @@ import 'package:sendra/screens/bills_page.dart';
 import 'package:sendra/screens/airtime_page.dart';
 import 'package:provider/provider.dart';
 import 'package:sendra/providers/app_providers.dart';
-import 'package:sendra/screens/language_page.dart';
-import 'package:sendra/screens/theme_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userId;
@@ -41,7 +40,9 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   int _navIndex = 0;
   bool _balanceHidden = false;
-  final bool _isDark = true;
+
+  // Language toggle: true = English 🇬🇧 (default), false = Swahili 🇹🇿
+  bool _isEnglish = true;
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -70,6 +71,24 @@ class _HomeScreenState extends State<HomeScreen>
     _animCtrl.dispose();
     super.dispose();
   }
+
+  // ── Language toggle ───────────────────────────────────────────────────────
+  void _toggleLanguage() {
+    setState(() => _isEnglish = !_isEnglish);
+    context.read<LocaleProvider>().setLocale(
+      _isEnglish ? const Locale('en') : const Locale('sw'),
+    );
+  }
+
+  // ── Theme toggle — switches instantly between dark and light ──────────────
+  void _toggleTheme() {
+    final provider = context.read<ThemeProvider>();
+    provider.setMode(
+      provider.mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+    );
+  }
+
+  String get _currentFlag => _isEnglish ? '🇬🇧' : '🇹🇿';
 
   // ── Navigation helpers ────────────────────────────────────────────────────
   void _openSend(double balance) {
@@ -127,8 +146,16 @@ class _HomeScreenState extends State<HomeScreen>
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final navCardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final navBorderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final inactiveLabelColor = isDark ? SColors.textDim : SColors.lightTextDim;
+    final l = AppLocalizations.of(context);
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection(FSKeys.usersCollection)
@@ -142,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen>
           return IndexedStack(
             index: _navIndex,
             children: [
-              _buildHomeTab(),
+              _buildHomeTab(isDark),
               const ExchangePage(),
               WalletPage(
                 userId: widget.userId,
@@ -159,12 +186,18 @@ class _HomeScreenState extends State<HomeScreen>
           );
         },
       ),
-      bottomNavigationBar: _buildNav(),
+      bottomNavigationBar: _buildNav(
+        l,
+        navCardColor,
+        navBorderColor,
+        SColors.gold,
+        inactiveLabelColor,
+      ),
     );
   }
 
   // ── Home tab ──────────────────────────────────────────────────────────────
-  Widget _buildHomeTab() {
+  Widget _buildHomeTab(bool isDark) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection(FSKeys.usersCollection)
@@ -181,14 +214,18 @@ class _HomeScreenState extends State<HomeScreen>
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                SliverToBoxAdapter(child: _buildHeader(balanceTzs)),
-                SliverToBoxAdapter(child: _buildBalanceCard(balanceTzs)),
-                SliverToBoxAdapter(child: _buildRatesTicker()),
-                SliverToBoxAdapter(child: _buildQuickActions(balanceTzs)),
-                SliverToBoxAdapter(child: _buildSendPanel(balanceTzs)),
-                SliverToBoxAdapter(child: _buildAccNumber()),
-                SliverToBoxAdapter(child: _buildTxHeader()),
-                SliverToBoxAdapter(child: _buildTxList()),
+                SliverToBoxAdapter(child: _buildHeader(isDark)),
+                SliverToBoxAdapter(
+                  child: _buildBalanceCard(balanceTzs, isDark),
+                ),
+                SliverToBoxAdapter(child: _buildRatesTicker(isDark)),
+                SliverToBoxAdapter(
+                  child: _buildQuickActions(balanceTzs, isDark),
+                ),
+                SliverToBoxAdapter(child: _buildSendPanel(balanceTzs, isDark)),
+                SliverToBoxAdapter(child: _buildAccNumber(isDark)),
+                SliverToBoxAdapter(child: _buildTxHeader(isDark)),
+                SliverToBoxAdapter(child: _buildTxList(isDark)),
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
@@ -199,11 +236,26 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
-  Widget _buildHeader(double balance) {
+  Widget _buildHeader(bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final l = AppLocalizations.of(context);
+
+    // Read current theme mode from provider (no setState needed — provider
+    // rebuilds the tree automatically when toggled)
+    final themeMode = context.watch<ThemeProvider>().mode;
+    final isCurrentlyDark =
+        themeMode == ThemeMode.dark ||
+        (themeMode == ThemeMode.system &&
+            MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Row(
         children: [
+          // ── Avatar ────────────────────────────────────────────────────────
           Container(
             width: 42,
             height: 42,
@@ -231,11 +283,14 @@ class _HomeScreenState extends State<HomeScreen>
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(AppStrings.goodMorning, style: SText.caption),
+              Text(
+                l.goodMorning,
+                style: TextStyle(color: textSub, fontSize: 13),
+              ),
               Text(
                 widget.userName,
-                style: const TextStyle(
-                  color: SColors.textPrimary,
+                style: TextStyle(
+                  color: textPrimary,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
@@ -243,50 +298,69 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
           const Spacer(),
-          // ── Language picker button ─────────────────────────────────────
+
+          // ── Flag language toggle ──────────────────────────────────────────
           GestureDetector(
-            onTap: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const LanguagePage()));
-            },
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: SColors.navyCard,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: SColors.navyLight),
-              ),
-              child: const Center(
-                child: Text('🌐', style: TextStyle(fontSize: 16)),
+            onTap: _toggleLanguage,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: child),
+              child: Container(
+                key: ValueKey<bool>(_isEnglish),
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: SColors.gold.withOpacity(0.4),
+                    width: 1.2,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    _currentFlag,
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
               ),
             ),
           ),
           const SizedBox(width: 8),
-          // ── Theme toggle button ────────────────────────────────────────
+
+          // ── Instant theme toggle (dark ↔ light) ───────────────────────────
           GestureDetector(
-            onTap: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const ThemePage()));
-            },
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: SColors.navyCard,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: SColors.navyLight),
+            onTap: _toggleTheme,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, anim) => RotationTransition(
+                turns: anim,
+                child: FadeTransition(opacity: anim, child: child),
               ),
-              child: Icon(
-                _isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                color: SColors.textSub,
-                size: 18,
+              child: Container(
+                key: ValueKey<bool>(isCurrentlyDark),
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Icon(
+                  // Shows what you'll switch TO (sun = currently dark, moon = currently light)
+                  isCurrentlyDark
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  color: isCurrentlyDark ? SColors.gold : textSub,
+                  size: 18,
+                ),
               ),
             ),
           ),
           const SizedBox(width: 8),
+
+          // ── Notifications ─────────────────────────────────────────────────
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection(FSKeys.notificationsCollection)
@@ -305,16 +379,16 @@ class _HomeScreenState extends State<HomeScreen>
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: SColors.navyCard,
+                    color: cardColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: SColors.navyLight),
+                    border: Border.all(color: borderColor),
                   ),
                   child: Stack(
                     children: [
-                      const Center(
+                      Center(
                         child: Icon(
                           Icons.notifications_outlined,
-                          color: SColors.textSub,
+                          color: textSub,
                           size: 20,
                         ),
                       ),
@@ -343,18 +417,32 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Balance card ──────────────────────────────────────────────────────────
-  Widget _buildBalanceCard(double balance) {
+  Widget _buildBalanceCard(double balance, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final dividerColor = isDark ? SColors.navyBorder : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final l = AppLocalizations.of(context);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Container(
         padding: const EdgeInsets.all(24),
-        decoration: SDecor.balanceCard,
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderColor),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Text(AppStrings.totalBalance, style: SText.caption),
+                Text(
+                  l.totalBalance,
+                  style: TextStyle(color: textSub, fontSize: 13),
+                ),
                 const Spacer(),
                 GestureDetector(
                   onTap: () => setState(() => _balanceHidden = !_balanceHidden),
@@ -362,7 +450,7 @@ class _HomeScreenState extends State<HomeScreen>
                     _balanceHidden
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined,
-                    color: SColors.textSub,
+                    color: textSub,
                     size: 18,
                   ),
                 ),
@@ -373,32 +461,34 @@ class _HomeScreenState extends State<HomeScreen>
               _balanceHidden
                   ? 'TZS ••••••'
                   : 'TZS ${Validators.formatNumber(balance)}',
-              style: const TextStyle(
-                color: SColors.textPrimary,
+              style: TextStyle(
+                color: textPrimary,
                 fontSize: 28,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 20),
-            Container(height: 1, color: SColors.navyBorder),
+            Container(height: 1, color: dividerColor),
             const SizedBox(height: 16),
             Row(
               children: [
                 _StatChip(
                   icon: Icons.arrow_downward_rounded,
-                  label: 'Received',
+                  label: _isEnglish ? 'Received' : 'Zilizopokelewa',
                   color: SColors.green,
                   userId: widget.userId,
                   type: 'credit',
+                  isDark: isDark,
                 ),
                 const SizedBox(width: 12),
                 _StatChip(
                   icon: Icons.arrow_upward_rounded,
-                  label: 'Sent',
+                  label: _isEnglish ? 'Sent' : 'Zilizotumwa',
                   color: SColors.red,
                   userId: widget.userId,
                   type: 'debit',
+                  isDark: isDark,
                 ),
               ],
             ),
@@ -409,13 +499,21 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Rates ticker ──────────────────────────────────────────────────────────
-  Widget _buildRatesTicker() {
+  Widget _buildRatesTicker(bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
     final tickers = ['GBP', 'USD', 'EUR'].map(AppRates.tickerLabel).toList();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: SDecor.card,
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor),
+        ),
         child: Row(
           children: [
             Container(
@@ -425,7 +523,7 @@ class _HomeScreenState extends State<HomeScreen>
                 borderRadius: BorderRadius.circular(6),
               ),
               child: const Text(
-                AppStrings.liveLabel,
+                'LIVE',
                 style: TextStyle(
                   color: SColors.gold,
                   fontSize: 10,
@@ -446,8 +544,8 @@ class _HomeScreenState extends State<HomeScreen>
                           padding: const EdgeInsets.only(right: 20),
                           child: Text(
                             r,
-                            style: const TextStyle(
-                              color: SColors.textPrimary,
+                            style: TextStyle(
+                              color: textPrimary,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
@@ -465,42 +563,74 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Quick actions ─────────────────────────────────────────────────────────
-  Widget _buildQuickActions(double balance) {
+  Widget _buildQuickActions(double balance, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     final row1 = [
-      {'label': 'Send', 'icon': Icons.send_rounded, 'primary': true},
       {
-        'label': 'Receive',
+        'labelEn': 'Send',
+        'labelSw': 'Tuma',
+        'icon': Icons.send_rounded,
+        'primary': true,
+      },
+      {
+        'labelEn': 'Receive',
+        'labelSw': 'Pokea',
         'icon': Icons.arrow_downward_rounded,
         'primary': false,
       },
-      {'label': 'Withdraw', 'icon': Icons.output_rounded, 'primary': false},
       {
-        'label': 'History',
+        'labelEn': 'Withdraw',
+        'labelSw': 'Toa',
+        'icon': Icons.output_rounded,
+        'primary': false,
+      },
+      {
+        'labelEn': 'History',
+        'labelSw': 'Historia',
         'icon': Icons.receipt_long_rounded,
         'primary': false,
       },
     ];
     final row2 = [
       {
-        'label': 'Bank',
+        'labelEn': 'Bank',
+        'labelSw': 'Benki',
         'icon': Icons.account_balance_outlined,
         'primary': false,
       },
-      {'label': 'Bills', 'icon': Icons.receipt_outlined, 'primary': false},
       {
-        'label': 'Airtime',
+        'labelEn': 'Bills',
+        'labelSw': 'Bili',
+        'icon': Icons.receipt_outlined,
+        'primary': false,
+      },
+      {
+        'labelEn': 'Airtime',
+        'labelSw': 'Muda wa Hewa',
         'icon': Icons.phone_android_outlined,
         'primary': false,
       },
-      {'label': 'Exchange', 'icon': Icons.swap_horiz_rounded, 'primary': false},
+      {
+        'labelEn': 'Exchange',
+        'labelSw': 'Ubadilishaji',
+        'icon': Icons.swap_horiz_rounded,
+        'primary': false,
+      },
     ];
 
     Widget actionBtn(Map<String, dynamic> a) {
       final isPrimary = a['primary'] as bool;
+      final label = _isEnglish
+          ? a['labelEn'] as String
+          : a['labelSw'] as String;
+      final key = a['labelEn'] as String;
       return Expanded(
         child: GestureDetector(
           onTap: () {
-            switch (a['label']) {
+            switch (key) {
               case 'Send':
                 _openSend(balance);
                 break;
@@ -540,26 +670,28 @@ class _HomeScreenState extends State<HomeScreen>
                           end: Alignment.bottomRight,
                         )
                       : null,
-                  color: isPrimary ? null : SColors.navyCard,
+                  color: isPrimary ? null : cardColor,
                   borderRadius: BorderRadius.circular(16),
                   border: isPrimary
                       ? null
-                      : Border.all(color: SColors.navyLight, width: 1),
+                      : Border.all(color: borderColor, width: 1),
                 ),
                 child: Icon(
                   a['icon'] as IconData,
-                  color: isPrimary ? SColors.navy : SColors.textSub,
+                  color: isPrimary ? SColors.navy : textSub,
                   size: 22,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
-                a['label'] as String,
+                label,
                 style: TextStyle(
-                  color: isPrimary ? SColors.gold : SColors.textSub,
+                  color: isPrimary ? SColors.gold : textSub,
                   fontSize: 11,
                   fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w400,
                 ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -580,14 +712,22 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Send panel ────────────────────────────────────────────────────────────
-  Widget _buildSendPanel(double balance) {
+  Widget _buildSendPanel(double balance, bool isDark) {
+    final l = AppLocalizations.of(context);
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
       child: GestureDetector(
         onTap: () => _openSend(balance),
         child: Container(
           padding: const EdgeInsets.all(20),
-          decoration: SDecor.goldGlow,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0x33D4A843)),
+          ),
           child: Row(
             children: [
               Container(
@@ -604,15 +744,28 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(AppStrings.sendMoney, style: SText.sectionTitle),
-                  const SizedBox(height: 3),
-                  Text(AppStrings.sendSubtitle, style: SText.caption),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l.sendMoney,
+                      style: TextStyle(
+                        color: isDark
+                            ? SColors.textPrimary
+                            : SColors.lightTextPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      l.sendSubtitle,
+                      style: TextStyle(color: textSub, fontSize: 13),
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
               const Icon(
                 Icons.arrow_forward_ios_rounded,
                 color: SColors.gold,
@@ -626,17 +779,29 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Account number ────────────────────────────────────────────────────────
-  Widget _buildAccNumber() {
+  Widget _buildAccNumber(bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+    final l = AppLocalizations.of(context);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: SDecor.card,
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor),
+        ),
         child: Row(
           children: [
-            const Icon(Icons.tag_rounded, color: SColors.textDim, size: 16),
+            Icon(Icons.tag_rounded, color: textDim, size: 16),
             const SizedBox(width: 8),
-            Text('Sendra ID: ', style: SText.tiny),
+            Text(
+              '${l.sendraId}: ',
+              style: TextStyle(color: textDim, fontSize: 11),
+            ),
             Text(
               widget.accNumber,
               style: const TextStyle(
@@ -653,17 +818,27 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Tx header ─────────────────────────────────────────────────────────────
-  Widget _buildTxHeader() {
+  Widget _buildTxHeader(bool isDark) {
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final l = AppLocalizations.of(context);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
       child: Row(
         children: [
-          Text(AppStrings.recentTx, style: SText.sectionTitle),
+          Text(
+            l.recentTx,
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const Spacer(),
           GestureDetector(
             onTap: _openHistory,
             child: Text(
-              AppStrings.seeAll,
+              l.seeAll,
               style: const TextStyle(color: SColors.gold, fontSize: 13),
             ),
           ),
@@ -673,7 +848,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Tx list ───────────────────────────────────────────────────────────────
-  Widget _buildTxList() {
+  Widget _buildTxList(bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final l = AppLocalizations.of(context);
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection(FSKeys.transactionsCollection)
@@ -705,9 +886,16 @@ class _HomeScreenState extends State<HomeScreen>
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
             child: Container(
               padding: const EdgeInsets.all(20),
-              decoration: SDecor.card,
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
               child: Center(
-                child: Text('No transactions yet', style: SText.caption),
+                child: Text(
+                  l.noTransactions,
+                  style: TextStyle(color: textSub, fontSize: 13),
+                ),
               ),
             ),
           );
@@ -730,7 +918,11 @@ class _HomeScreenState extends State<HomeScreen>
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: SDecor.card,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -753,16 +945,16 @@ class _HomeScreenState extends State<HomeScreen>
                         children: [
                           Text(
                             name,
-                            style: const TextStyle(
-                              color: SColors.textPrimary,
+                            style: TextStyle(
+                              color: textPrimary,
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            '${isSender ? 'Sent' : 'Received'} · ${_fmtDate(dt)}',
-                            style: SText.caption,
+                            '${isSender ? (_isEnglish ? 'Sent' : 'Imetumwa') : (_isEnglish ? 'Received' : 'Imepokelewa')} · ${_fmtDate(dt)}',
+                            style: TextStyle(color: textSub, fontSize: 13),
                           ),
                         ],
                       ),
@@ -786,17 +978,24 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Bottom nav ────────────────────────────────────────────────────────────
-  Widget _buildNav() {
+  Widget _buildNav(
+    AppLocalizations l,
+    Color cardColor,
+    Color borderColor,
+    Color activeColor,
+    Color inactiveColor,
+  ) {
     final items = [
-      {'icon': Icons.home_rounded, 'label': 'Home'},
-      {'icon': Icons.currency_exchange_rounded, 'label': 'Exchange'},
-      {'icon': Icons.account_balance_wallet_outlined, 'label': 'Wallet'},
-      {'icon': Icons.person_outline_rounded, 'label': 'Profile'},
+      {'icon': Icons.home_rounded, 'label': l.home},
+      {'icon': Icons.currency_exchange_rounded, 'label': l.exchange},
+      {'icon': Icons.account_balance_wallet_outlined, 'label': l.navWallet},
+      {'icon': Icons.person_outline_rounded, 'label': l.navProfile},
     ];
+
     return Container(
-      decoration: const BoxDecoration(
-        color: SColors.navyCard,
-        border: Border(top: BorderSide(color: SColors.navyLight, width: 1)),
+      decoration: BoxDecoration(
+        color: cardColor,
+        border: Border(top: BorderSide(color: borderColor, width: 1)),
       ),
       child: SafeArea(
         top: false,
@@ -806,6 +1005,7 @@ class _HomeScreenState extends State<HomeScreen>
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: List.generate(items.length, (i) {
               final active = i == _navIndex;
+              final label = items[i]['label'] as String;
               return GestureDetector(
                 onTap: () => setState(() => _navIndex = i),
                 child: AnimatedContainer(
@@ -825,14 +1025,14 @@ class _HomeScreenState extends State<HomeScreen>
                     children: [
                       Icon(
                         items[i]['icon'] as IconData,
-                        color: active ? SColors.gold : SColors.textDim,
+                        color: active ? SColors.gold : inactiveColor,
                         size: 22,
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        items[i]['label'] as String,
+                        label,
                         style: TextStyle(
-                          color: active ? SColors.gold : SColors.textDim,
+                          color: active ? activeColor : inactiveColor,
                           fontSize: 10,
                           fontWeight: active
                               ? FontWeight.w600
@@ -856,27 +1056,33 @@ class _HomeScreenState extends State<HomeScreen>
     final d = DateTime(dt.year, dt.month, dt.day);
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
-    if (d == today) return 'Today, $h:$m';
-    if (d == today.subtract(const Duration(days: 1))) return 'Yesterday, $h:$m';
+    if (d == today) return '${_isEnglish ? 'Today' : 'Leo'}, $h:$m';
+    if (d == today.subtract(const Duration(days: 1)))
+      return '${_isEnglish ? 'Yesterday' : 'Jana'}, $h:$m';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }
 
-// ─── Stat chip ────────────────────────────────────────────────────────────
+// ─── Stat chip ────────────────────────────────────────────────────────────────
 class _StatChip extends StatelessWidget {
   final IconData icon;
   final String label, userId, type;
   final Color color;
+  final bool isDark;
+
   const _StatChip({
     required this.icon,
     required this.label,
     required this.color,
     required this.userId,
     required this.type,
+    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Expanded(
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -919,10 +1125,7 @@ class _StatChip extends StatelessWidget {
                     children: [
                       Text(
                         label,
-                        style: const TextStyle(
-                          color: SColors.textSub,
-                          fontSize: 10,
-                        ),
+                        style: TextStyle(color: textSub, fontSize: 10),
                       ),
                       Text(
                         display,

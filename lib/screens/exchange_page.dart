@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 import 'package:sendra/services/exchange_rate_service.dart';
 
 class ExchangePage extends StatefulWidget {
@@ -29,10 +30,19 @@ class _ExchangePageState extends State<ExchangePage>
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
       builder: (context, snapshot) {
-        // Determine rate freshness for the live indicator
         final isLive = snapshot.hasData;
         final updatedAt = snapshot.data?.updatedAt;
 
@@ -40,21 +50,20 @@ class _ExchangePageState extends State<ExchangePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Page header ───────────────────────────────────────────
+              // ── Header ───────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                 child: Row(
                   children: [
-                    const Text(
-                      'Exchange',
+                    Text(
+                      l.exchange,
                       style: TextStyle(
-                        color: SColors.textPrimary,
+                        color: textPrimary,
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const Spacer(),
-                    // Live rates badge
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -63,12 +72,12 @@ class _ExchangePageState extends State<ExchangePage>
                       decoration: BoxDecoration(
                         color: isLive
                             ? SColors.green.withOpacity(0.12)
-                            : SColors.navyCard,
+                            : cardColor,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: isLive
                               ? SColors.green.withOpacity(0.3)
-                              : SColors.navyLight,
+                              : borderColor,
                         ),
                       ),
                       child: Row(
@@ -78,15 +87,19 @@ class _ExchangePageState extends State<ExchangePage>
                             width: 6,
                             height: 6,
                             decoration: BoxDecoration(
-                              color: isLive ? SColors.green : SColors.textDim,
+                              color: isLive ? SColors.green : textDim,
                               shape: BoxShape.circle,
                             ),
                           ),
                           const SizedBox(width: 5),
                           Text(
-                            isLive ? 'Live' : 'Connecting...',
+                            isLive
+                                ? (l.isSwahili ? 'Moja kwa moja' : 'Live')
+                                : (l.isSwahili
+                                      ? 'Inaunganisha...'
+                                      : 'Connecting...'),
                             style: TextStyle(
-                              color: isLive ? SColors.green : SColors.textDim,
+                              color: isLive ? SColors.green : textDim,
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                             ),
@@ -98,13 +111,12 @@ class _ExchangePageState extends State<ExchangePage>
                 ),
               ),
 
-              // Last updated timestamp
               if (updatedAt != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                   child: Text(
-                    'Updated ${_timeAgo(updatedAt)}',
-                    style: SText.tiny,
+                    '${l.isSwahili ? 'Imesasishwa' : 'Updated'} ${_timeAgo(updatedAt, l)}',
+                    style: TextStyle(color: textDim, fontSize: 11),
                   ),
                 ),
 
@@ -116,9 +128,9 @@ class _ExchangePageState extends State<ExchangePage>
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: SColors.navyCard,
+                    color: cardColor,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: SColors.navyLight),
+                    border: Border.all(color: borderColor),
                   ),
                   child: TabBar(
                     controller: _tabCtrl,
@@ -128,7 +140,7 @@ class _ExchangePageState extends State<ExchangePage>
                     ),
                     indicatorSize: TabBarIndicatorSize.tab,
                     labelColor: SColors.navy,
-                    unselectedLabelColor: SColors.textSub,
+                    unselectedLabelColor: textSub,
                     labelStyle: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -138,9 +150,9 @@ class _ExchangePageState extends State<ExchangePage>
                       fontWeight: FontWeight.w400,
                     ),
                     dividerColor: Colors.transparent,
-                    tabs: const [
-                      Tab(text: 'Convert'),
-                      Tab(text: 'FX Rates'),
+                    tabs: [
+                      Tab(text: l.isSwahili ? 'Badilisha' : 'Convert'),
+                      Tab(text: l.isSwahili ? 'Viwango' : 'FX Rates'),
                       Tab(text: 'Crypto'),
                     ],
                   ),
@@ -148,7 +160,6 @@ class _ExchangePageState extends State<ExchangePage>
               ),
               const SizedBox(height: 4),
 
-              // ── Tab views ─────────────────────────────────────────────
               Expanded(
                 child: TabBarView(
                   controller: _tabCtrl,
@@ -166,16 +177,24 @@ class _ExchangePageState extends State<ExchangePage>
     );
   }
 
-  String _timeAgo(DateTime dt) {
+  String _timeAgo(DateTime dt, AppLocalizations l) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    return '${diff.inHours}h ago';
+    if (diff.inMinutes < 1) {
+      return l.isSwahili ? 'sasa hivi' : 'just now';
+    }
+    if (diff.inMinutes < 60) {
+      return l.isSwahili
+          ? 'dakika ${diff.inMinutes} zilizopita'
+          : '${diff.inMinutes}m ago';
+    }
+    return l.isSwahili
+        ? 'masaa ${diff.inHours} yaliyopita'
+        : '${diff.inHours}h ago';
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Tab 1 — Converter (rebuilds on every rate update via StreamBuilder)
+// Tab 1 — Converter
 // ═══════════════════════════════════════════════════════════════════════════
 class _ConverterTab extends StatefulWidget {
   const _ConverterTab();
@@ -201,7 +220,6 @@ class _ConverterTabState extends State<_ConverterTab> {
     super.dispose();
   }
 
-  // AppRates is already patched live by ExchangeRateService — just call convert()
   void _calculate() {
     final amount = double.tryParse(_ctrl.text.trim()) ?? 0;
     setState(() => _result = AppRates.convert(_from, _to, amount));
@@ -227,12 +245,15 @@ class _ConverterTabState extends State<_ConverterTab> {
 
   @override
   Widget build(BuildContext context) {
-    // Rebuild whenever live rates arrive
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
       builder: (context, _) {
         final amount = double.tryParse(_ctrl.text.trim()) ?? 0;
-        // Recalculate with fresh rates on every stream event
         if (amount > 0) _result = AppRates.convert(_from, _to, amount);
         final rate1 = AppRates.convert(_from, _to, 1.0);
 
@@ -241,7 +262,7 @@ class _ConverterTabState extends State<_ConverterTab> {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
           children: [
             _CurrencyInputCard(
-              label: 'You have',
+              label: l.isSwahili ? 'Una' : 'You have',
               currency: _from,
               controller: _ctrl,
               allCurrencies: _all,
@@ -278,7 +299,7 @@ class _ConverterTabState extends State<_ConverterTab> {
             const SizedBox(height: 12),
 
             _CurrencyOutputCard(
-              label: 'You get',
+              label: l.isSwahili ? 'Unapata' : 'You get',
               currency: _to,
               result: _result,
               formatted: _fmt(_result),
@@ -313,7 +334,11 @@ class _ConverterTabState extends State<_ConverterTab> {
                   },
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
-                      color: _copied ? SColors.green : SColors.navyLight,
+                      color: _copied
+                          ? SColors.green
+                          : isDark
+                          ? SColors.navyLight
+                          : SColors.lightBorder,
                       width: 1,
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -323,13 +348,15 @@ class _ConverterTabState extends State<_ConverterTab> {
                   ),
                   icon: Icon(
                     _copied ? Icons.check_rounded : Icons.copy_rounded,
-                    color: _copied ? SColors.green : SColors.textSub,
+                    color: _copied ? SColors.green : textSub,
                     size: 16,
                   ),
                   label: Text(
-                    _copied ? 'Copied!' : 'Copy Result',
+                    _copied
+                        ? (l.copied)
+                        : (l.isSwahili ? 'Nakili Matokeo' : 'Copy Result'),
                     style: TextStyle(
-                      color: _copied ? SColors.green : SColors.textSub,
+                      color: _copied ? SColors.green : textSub,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -346,7 +373,7 @@ class _ConverterTabState extends State<_ConverterTab> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Tab 2 — FX Rates (live from Firestore via stream)
+// Tab 2 — FX Rates
 // ═══════════════════════════════════════════════════════════════════════════
 class _FxRatesTab extends StatelessWidget {
   const _FxRatesTab();
@@ -355,6 +382,12 @@ class _FxRatesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
       builder: (context, snap) {
@@ -368,8 +401,10 @@ class _FxRatesTab extends StatelessWidget {
           children: [
             _SectionHeader(
               icon: '🇹🇿',
-              title: 'Rates vs TZS',
-              sub: '1 unit = X TZS (after $spreadPct% spread)',
+              title: l.isSwahili ? 'Viwango dhidi ya TZS' : 'Rates vs TZS',
+              sub: l.isSwahili
+                  ? '1 unit = X TZS (baada ya $spreadPct% tofauti)'
+                  : '1 unit = X TZS (after $spreadPct% spread)',
             ),
             const SizedBox(height: 10),
             ..._fiats.map(
@@ -377,7 +412,7 @@ class _FxRatesTab extends StatelessWidget {
                 currency: c,
                 name: AppRates.currencyNames[c] ?? c,
                 flag: AppRates.currencyFlags[c] ?? '',
-                tzs: AppRates.priceInTzs(c), // live — AppRates already patched
+                tzs: AppRates.priceInTzs(c),
                 usd: AppRates.priceInUsd(c),
               ),
             ),
@@ -385,14 +420,15 @@ class _FxRatesTab extends StatelessWidget {
             const SizedBox(height: 24),
             _SectionHeader(
               icon: '💱',
-              title: 'Cross rates',
-              sub: 'Mid-market, no spread',
+              title: l.isSwahili ? 'Viwango vya msalaba' : 'Cross rates',
+              sub: l.isSwahili
+                  ? 'Wastani, bila tofauti'
+                  : 'Mid-market, no spread',
             ),
             const SizedBox(height: 10),
             _CrossRateGrid(currencies: _fiats),
 
             const SizedBox(height: 16),
-            // Live USDT → TZS rate card
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -407,9 +443,11 @@ class _FxRatesTab extends StatelessWidget {
                     children: [
                       const Text('🔷', style: TextStyle(fontSize: 14)),
                       const SizedBox(width: 8),
-                      const Text(
-                        'Live USDT → TZS rate',
-                        style: TextStyle(
+                      Text(
+                        l.isSwahili
+                            ? 'Kiwango cha USDT → TZS'
+                            : 'Live USDT → TZS rate',
+                        style: const TextStyle(
                           color: SColors.textPrimary,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -448,16 +486,14 @@ class _FxRatesTab extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(
-                        Icons.info_outline,
-                        color: SColors.textDim,
-                        size: 12,
-                      ),
+                      Icon(Icons.info_outline, color: textDim, size: 12),
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          'Rates shown are mid-market. A $spreadPct% spread applies on payments.',
-                          style: SText.tiny.copyWith(color: SColors.textSub),
+                          l.isSwahili
+                              ? 'Viwango vilivyoonyeshwa ni wastani. Tofauti ya $spreadPct% inatumika kwa malipo.'
+                              : 'Rates shown are mid-market. A $spreadPct% spread applies on payments.',
+                          style: TextStyle(color: textSub, fontSize: 11),
                         ),
                       ),
                     ],
@@ -473,13 +509,20 @@ class _FxRatesTab extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Tab 3 — Crypto (live prices from CoinGecko via Firestore)
+// Tab 3 — Crypto
 // ═══════════════════════════════════════════════════════════════════════════
 class _CryptoTab extends StatelessWidget {
   const _CryptoTab();
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
       builder: (context, snap) {
@@ -492,10 +535,14 @@ class _CryptoTab extends StatelessWidget {
           children: [
             _SectionHeader(
               icon: '🪙',
-              title: 'Crypto Market',
+              title: l.isSwahili ? 'Soko la Crypto' : 'Crypto Market',
               sub: isLive
-                  ? 'Live prices via CoinGecko'
-                  : 'Loading live prices...',
+                  ? (l.isSwahili
+                        ? 'Bei za moja kwa moja kutoka CoinGecko'
+                        : 'Live prices via CoinGecko')
+                  : (l.isSwahili
+                        ? 'Inapakia bei za moja kwa moja...'
+                        : 'Loading live prices...'),
             ),
             const SizedBox(height: 10),
 
@@ -527,9 +574,9 @@ class _CryptoTab extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: SColors.navyCard,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: SColors.navyLight),
+                border: Border.all(color: borderColor),
               ),
               child: Row(
                 children: [
@@ -537,16 +584,20 @@ class _CryptoTab extends StatelessWidget {
                     isLive
                         ? Icons.check_circle_outline
                         : Icons.schedule_rounded,
-                    color: isLive ? SColors.green : SColors.textDim,
+                    color: isLive ? SColors.green : textDim,
                     size: 14,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       isLive
-                          ? 'Live prices from CoinGecko · Refreshed every 30 min'
-                          : 'Fetching live prices...',
-                      style: SText.tiny,
+                          ? (l.isSwahili
+                                ? 'Bei za moja kwa moja kutoka CoinGecko · Inasasishwa kila dakika 30'
+                                : 'Live prices from CoinGecko · Refreshed every 30 min')
+                          : (l.isSwahili
+                                ? 'Inapakia bei za moja kwa moja...'
+                                : 'Fetching live prices...'),
+                      style: TextStyle(color: textDim, fontSize: 11),
                     ),
                   ),
                 ],
@@ -560,7 +611,7 @@ class _CryptoTab extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Shared sub-widgets (unchanged structure, now always read live AppRates)
+// Shared sub-widgets
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _CurrencyInputCard extends StatelessWidget {
@@ -581,17 +632,31 @@ class _CurrencyInputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: SColors.navyCard,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SColors.navyLight),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: SText.label),
+          Text(
+            label,
+            style: TextStyle(
+              color: isDark ? SColors.textSub : SColors.lightTextSub,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -612,15 +677,15 @@ class _CurrencyInputCard extends StatelessWidget {
                     ),
                   ],
                   onChanged: onAmountChanged,
-                  style: const TextStyle(
-                    color: SColors.textPrimary,
+                  style: TextStyle(
+                    color: textPrimary,
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                   ),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     hintText: '0',
-                    hintStyle: SText.hint.copyWith(fontSize: 24),
+                    hintStyle: TextStyle(color: textDim, fontSize: 24),
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
@@ -628,7 +693,10 @@ class _CurrencyInputCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(AppRates.currencyNames[currency] ?? currency, style: SText.tiny),
+          Text(
+            AppRates.currencyNames[currency] ?? currency,
+            style: TextStyle(color: textDim, fontSize: 11),
+          ),
         ],
       ),
     );
@@ -663,21 +731,35 @@ class _CurrencyOutputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: result > 0 ? SColors.green.withOpacity(0.06) : SColors.navyCard,
+        color: result > 0
+            ? SColors.green.withOpacity(0.06)
+            : (isDark ? SColors.navyCard : SColors.lightCard),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: result > 0
               ? SColors.green.withOpacity(0.3)
-              : SColors.navyLight,
+              : (isDark ? SColors.navyLight : SColors.lightBorder),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: SText.label),
+          Text(
+            label,
+            style: TextStyle(
+              color: textSub,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -690,7 +772,7 @@ class _CurrencyOutputCard extends StatelessWidget {
                 child: Text(
                   result > 0 ? formatted : '—',
                   style: TextStyle(
-                    color: result > 0 ? SColors.green : SColors.textDim,
+                    color: result > 0 ? SColors.green : textDim,
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                   ),
@@ -700,7 +782,10 @@ class _CurrencyOutputCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(AppRates.currencyNames[currency] ?? currency, style: SText.tiny),
+          Text(
+            AppRates.currencyNames[currency] ?? currency,
+            style: TextStyle(color: textDim, fontSize: 11),
+          ),
         ],
       ),
     );
@@ -724,15 +809,21 @@ class _CurrencyPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final flag = AppRates.currencyFlags[currency] ?? currency[0];
     final isCrypto = AppRates.isCrypto(currency);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: isCrypto ? SColors.gold.withOpacity(0.10) : SColors.navyLight,
+        color: isCrypto
+            ? SColors.gold.withOpacity(0.10)
+            : (isDark ? SColors.navyLight : SColors.lightBorder),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCrypto ? SColors.gold.withOpacity(0.4) : SColors.navyBorder,
+          color: isCrypto
+              ? SColors.gold.withOpacity(0.4)
+              : (isDark ? SColors.navyBorder : SColors.lightBorder),
         ),
       ),
       child: Row(
@@ -762,15 +853,17 @@ class _CurrencyPill extends StatelessWidget {
           Text(
             currency,
             style: TextStyle(
-              color: isCrypto ? SColors.gold : SColors.textPrimary,
+              color: isCrypto
+                  ? SColors.gold
+                  : (isDark ? SColors.textPrimary : SColors.lightTextPrimary),
               fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(width: 4),
-          const Icon(
+          Icon(
             Icons.keyboard_arrow_down_rounded,
-            color: SColors.textDim,
+            color: isDark ? SColors.textDim : SColors.lightTextDim,
             size: 16,
           ),
         ],
@@ -791,12 +884,19 @@ class _RatePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyBorder : SColors.lightBorder;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final l = AppLocalizations.of(context);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: SColors.navyCard,
+        color: cardColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SColors.navyBorder),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -809,8 +909,8 @@ class _RatePill extends StatelessWidget {
           Expanded(
             child: Text(
               '1 $from = $formatted $to',
-              style: const TextStyle(
-                color: SColors.textSub,
+              style: TextStyle(
+                color: textSub,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -822,9 +922,9 @@ class _RatePill extends StatelessWidget {
               color: SColors.gold.withOpacity(0.10),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: const Text(
-              'Mid-market',
-              style: TextStyle(
+            child: Text(
+              l.isSwahili ? 'Wastani' : 'Mid-market',
+              style: const TextStyle(
                 color: SColors.gold,
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
@@ -843,6 +943,13 @@ class _QuickConversions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     final amounts = AppRates.isCrypto(from)
         ? [0.001, 0.01, 0.1, 1.0, 10.0]
         : from == 'TZS'
@@ -853,8 +960,13 @@ class _QuickConversions extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Quick reference',
-          style: SText.label.copyWith(letterSpacing: 0.3),
+          l.isSwahili ? 'Mwongozo wa haraka' : 'Quick reference',
+          style: TextStyle(
+            color: textSub,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.3,
+          ),
         ),
         const SizedBox(height: 10),
         ...amounts.map((a) {
@@ -876,23 +988,16 @@ class _QuickConversions extends StatelessWidget {
                 Expanded(
                   child: Text(
                     fmtA,
-                    style: const TextStyle(
-                      color: SColors.textSub,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: textSub, fontSize: 13),
                   ),
                 ),
-                const Icon(
-                  Icons.arrow_forward_rounded,
-                  color: SColors.textDim,
-                  size: 14,
-                ),
+                Icon(Icons.arrow_forward_rounded, color: textDim, size: 14),
                 Expanded(
                   child: Text(
                     fmtR,
                     textAlign: TextAlign.right,
-                    style: const TextStyle(
-                      color: SColors.textPrimary,
+                    style: TextStyle(
+                      color: textPrimary,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -935,11 +1040,20 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? SColors.navy : SColors.lightBg;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
-      decoration: const BoxDecoration(
-        color: SColors.navy,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         children: [
@@ -949,18 +1063,18 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: SColors.textDim,
+                color: textDim,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              'Select Currency',
+              l.isSwahili ? 'Chagua Sarafu' : 'Select Currency',
               style: TextStyle(
-                color: SColors.textPrimary,
+                color: textPrimary,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
               ),
@@ -970,19 +1084,31 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
-              decoration: SDecor.inputField,
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: borderColor),
+              ),
               child: TextField(
                 onChanged: (v) => setState(() => _search = v),
-                style: const TextStyle(
-                  color: SColors.textPrimary,
-                  fontSize: 14,
-                ),
-                decoration: SDecor.textInput(
-                  hint: 'Search currency...',
-                  prefix: const Icon(
-                    Icons.search_rounded,
-                    color: SColors.textDim,
-                    size: 18,
+                style: TextStyle(color: textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: l.isSwahili
+                      ? 'Tafuta sarafu...'
+                      : 'Search currency...',
+                  hintStyle: TextStyle(color: textDim, fontSize: 14),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Icon(Icons.search_rounded, color: textDim, size: 18),
+                  ),
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 0,
+                    minHeight: 0,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
                   ),
                 ),
               ),
@@ -1013,12 +1139,12 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
                     decoration: BoxDecoration(
                       color: selected
                           ? SColors.gold.withOpacity(0.12)
-                          : SColors.navyCard,
+                          : cardColor,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: selected
                             ? SColors.gold.withOpacity(0.4)
-                            : SColors.navyLight,
+                            : borderColor,
                       ),
                     ),
                     child: Row(
@@ -1051,14 +1177,15 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
                               Text(
                                 c,
                                 style: TextStyle(
-                                  color: selected
-                                      ? SColors.gold
-                                      : SColors.textPrimary,
+                                  color: selected ? SColors.gold : textPrimary,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              Text(name, style: SText.tiny),
+                              Text(
+                                name,
+                                style: TextStyle(color: textDim, fontSize: 11),
+                              ),
                             ],
                           ),
                         ),
@@ -1094,13 +1221,20 @@ class _FxRateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: SColors.navyCard,
+        color: cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: SColors.navyLight),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -1112,13 +1246,13 @@ class _FxRateRow extends StatelessWidget {
               children: [
                 Text(
                   currency,
-                  style: const TextStyle(
-                    color: SColors.textPrimary,
+                  style: TextStyle(
+                    color: textPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(name, style: SText.tiny),
+                Text(name, style: TextStyle(color: textDim, fontSize: 11)),
               ],
             ),
           ),
@@ -1137,7 +1271,7 @@ class _FxRateRow extends StatelessWidget {
                 currency == 'TZS'
                     ? ''
                     : '\$${Validators.formatDecimal(usd, dp: 4)}',
-                style: SText.tiny,
+                style: TextStyle(color: textDim, fontSize: 11),
               ),
             ],
           ),
@@ -1153,11 +1287,20 @@ class _CrossRateGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     final pairs = <({String from, String to})>[];
-    for (int i = 0; i < currencies.length; i++)
+    for (int i = 0; i < currencies.length; i++) {
       for (int j = i + 1; j < currencies.length; j++) {
         pairs.add((from: currencies[i], to: currencies[j]));
       }
+    }
 
     return Column(
       children: pairs.map((p) {
@@ -1169,33 +1312,33 @@ class _CrossRateGrid extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: SColors.navyCard,
+            color: cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: SColors.navyLight),
+            border: Border.all(color: borderColor),
           ),
           child: Row(
             children: [
               Text(
                 '${AppRates.currencyFlags[p.from] ?? ''} ${p.from}',
-                style: const TextStyle(color: SColors.textSub, fontSize: 13),
+                style: TextStyle(color: textSub, fontSize: 13),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Icon(
                   Icons.arrow_forward_rounded,
-                  color: SColors.textDim,
+                  color: textDim,
                   size: 14,
                 ),
               ),
               Text(
                 '${AppRates.currencyFlags[p.to] ?? ''} ${p.to}',
-                style: const TextStyle(color: SColors.textSub, fontSize: 13),
+                style: TextStyle(color: textSub, fontSize: 13),
               ),
               const Spacer(),
               Text(
                 fmtRate,
-                style: const TextStyle(
-                  color: SColors.textPrimary,
+                style: TextStyle(
+                  color: textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1221,16 +1364,24 @@ class _CryptoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     final usdStr = usd >= 1
         ? '\$${Validators.formatNumber(usd)}'
         : '\$${usd.toStringAsFixed(4)}';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: SColors.navyCard,
+        color: cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: SColors.navyLight),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -1259,13 +1410,13 @@ class _CryptoRow extends StatelessWidget {
               children: [
                 Text(
                   symbol,
-                  style: const TextStyle(
-                    color: SColors.textPrimary,
+                  style: TextStyle(
+                    color: textPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(name, style: SText.tiny),
+                Text(name, style: TextStyle(color: textDim, fontSize: 11)),
               ],
             ),
           ),
@@ -1282,7 +1433,7 @@ class _CryptoRow extends StatelessWidget {
               ),
               Text(
                 'TZS ${Validators.formatNumber(tzs)}',
-                style: const TextStyle(color: SColors.textSub, fontSize: 11),
+                style: TextStyle(color: textDim, fontSize: 11),
               ),
             ],
           ),
@@ -1302,6 +1453,11 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Row(
       children: [
         Text(icon, style: const TextStyle(fontSize: 16)),
@@ -1311,13 +1467,13 @@ class _SectionHeader extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                color: SColors.textPrimary,
+              style: TextStyle(
+                color: textPrimary,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            Text(sub, style: SText.tiny),
+            Text(sub, style: TextStyle(color: textDim, fontSize: 11)),
           ],
         ),
       ],

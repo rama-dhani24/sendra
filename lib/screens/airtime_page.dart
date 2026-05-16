@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 
 class AirtimePage extends StatefulWidget {
   final String userId;
@@ -42,23 +43,30 @@ class _AirtimePageState extends State<AirtimePage> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: SColors.bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: SColors.textSub,
-            size: 18,
-          ),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: textSub, size: 18),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Buy Airtime',
+        title: Text(
+          l.buyAirtime,
           style: TextStyle(
-            color: SColors.textPrimary,
+            color: textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -71,9 +79,14 @@ class _AirtimePageState extends State<AirtimePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Balance card ─────────────────────────────────────────
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: SDecor.card,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -93,11 +106,14 @@ class _AirtimePageState extends State<AirtimePage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Available Balance', style: SText.tiny),
+                        Text(
+                          l.availableBalance,
+                          style: TextStyle(color: textDim, fontSize: 11),
+                        ),
                         Text(
                           'TZS ${Validators.formatNumber(widget.balanceTzs)}',
-                          style: const TextStyle(
-                            color: SColors.textPrimary,
+                          style: TextStyle(
+                            color: textPrimary,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -109,7 +125,15 @@ class _AirtimePageState extends State<AirtimePage> {
               ),
               const SizedBox(height: 24),
 
-              Text('Network', style: SText.label),
+              // ── Network selector ─────────────────────────────────────
+              Text(
+                l.network,
+                style: TextStyle(
+                  color: textSub,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 10),
               Row(
                 children: _networks.map((n) {
@@ -122,12 +146,10 @@ class _AirtimePageState extends State<AirtimePage> {
                         margin: const EdgeInsets.only(right: 6),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: sel
-                              ? color.withOpacity(0.15)
-                              : SColors.navyCard,
+                          color: sel ? color.withOpacity(0.15) : cardColor,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: sel ? color : SColors.navyLight,
+                            color: sel ? color : borderColor,
                             width: sel ? 1.5 : 1,
                           ),
                         ),
@@ -155,7 +177,7 @@ class _AirtimePageState extends State<AirtimePage> {
                             Text(
                               n,
                               style: TextStyle(
-                                color: sel ? color : SColors.textDim,
+                                color: sel ? color : textDim,
                                 fontSize: 9,
                                 fontWeight: sel
                                     ? FontWeight.w700
@@ -171,10 +193,22 @@ class _AirtimePageState extends State<AirtimePage> {
               ),
               const SizedBox(height: 20),
 
-              Text('Phone Number', style: SText.label),
+              // ── Phone number ─────────────────────────────────────────
+              Text(
+                l.mobileNumber,
+                style: TextStyle(
+                  color: textSub,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
               Container(
-                decoration: SDecor.inputField,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderColor),
+                ),
                 child: TextField(
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
@@ -182,20 +216,41 @@ class _AirtimePageState extends State<AirtimePage> {
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(10),
                   ],
-                  style: SText.body,
-                  decoration: SDecor.textInput(
-                    hint: '07XXXXXXXX',
-                    prefix: const Icon(
-                      Icons.phone_outlined,
-                      color: SColors.textDim,
-                      size: 18,
+                  style: TextStyle(color: textPrimary, fontSize: 15),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '07XXXXXXXX',
+                    hintStyle: TextStyle(color: textDim, fontSize: 15),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Icon(
+                        Icons.phone_outlined,
+                        color: textDim,
+                        size: 18,
+                      ),
+                    ),
+                    prefixIconConstraints: const BoxConstraints(
+                      minWidth: 0,
+                      minHeight: 0,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
 
-              Text('Amount (TZS)', style: SText.label),
+              // ── Quick amounts ────────────────────────────────────────
+              Text(
+                '${l.amount} (TZS)',
+                style: TextStyle(
+                  color: textSub,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
@@ -215,19 +270,17 @@ class _AirtimePageState extends State<AirtimePage> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: sel
-                            ? SColors.gold.withOpacity(0.15)
-                            : SColors.navyCard,
+                        color: sel ? SColors.gold.withOpacity(0.15) : cardColor,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: sel ? SColors.gold : SColors.navyLight,
+                          color: sel ? SColors.gold : borderColor,
                           width: sel ? 1.5 : 1,
                         ),
                       ),
                       child: Text(
                         'TZS ${Validators.formatNumber(a)}',
                         style: TextStyle(
-                          color: sel ? SColors.gold : SColors.textSub,
+                          color: sel ? SColors.gold : textSub,
                           fontSize: 12,
                           fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
                         ),
@@ -238,25 +291,35 @@ class _AirtimePageState extends State<AirtimePage> {
               ),
               const SizedBox(height: 12),
               Container(
-                decoration: SDecor.inputField,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderColor),
+                ),
                 child: TextField(
                   controller: _amountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
                   onChanged: (_) => setState(() => _selected = 0),
-                  style: const TextStyle(
-                    color: SColors.textPrimary,
+                  style: TextStyle(
+                    color: textPrimary,
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                   ),
-                  decoration: SDecor.textInput(
-                    hint: 'Custom amount',
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: l.isSwahili ? 'Kiasi maalum' : 'Custom amount',
+                    hintStyle: TextStyle(color: textDim, fontSize: 15),
                     prefixText: 'TZS  ',
                     prefixStyle: const TextStyle(
                       color: SColors.gold,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
                     ),
                   ),
                 ),
@@ -290,34 +353,44 @@ class _AirtimePageState extends State<AirtimePage> {
                     final phone = _phoneCtrl.text.trim();
                     final amt = double.tryParse(_amountCtrl.text.trim()) ?? 0;
                     if (!Validators.isValidTZPhone(phone)) {
-                      setState(() => _error = 'Enter a valid phone number.');
+                      setState(
+                        () => _error = l.isSwahili
+                            ? 'Weka nambari sahihi ya simu.'
+                            : 'Enter a valid phone number.',
+                      );
                       return;
                     }
                     if (amt <= 0) {
-                      setState(() => _error = 'Enter a valid amount.');
+                      setState(
+                        () => _error = l.isSwahili
+                            ? 'Weka kiasi sahihi.'
+                            : 'Enter a valid amount.',
+                      );
                       return;
                     }
                     if (amt > widget.balanceTzs) {
-                      setState(() => _error = 'Insufficient balance.');
+                      setState(() => _error = l.insufficientBal);
                       return;
                     }
                     showDialog(
                       context: context,
                       builder: (_) => AlertDialog(
-                        backgroundColor: SColors.navyCard,
+                        backgroundColor: cardColor,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        title: const Text(
-                          'Coming Soon',
+                        title: Text(
+                          l.comingSoon,
                           style: TextStyle(
-                            color: SColors.textPrimary,
+                            color: textPrimary,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         content: Text(
-                          'Airtime purchase coming in next release.',
-                          style: SText.caption,
+                          l.isSwahili
+                              ? 'Ununuzi wa muda wa hewa unakuja.'
+                              : 'Airtime purchase coming in next release.',
+                          style: TextStyle(color: textSub, fontSize: 13),
                         ),
                         actions: [
                           TextButton(
@@ -332,7 +405,7 @@ class _AirtimePageState extends State<AirtimePage> {
                     );
                   },
                   style: SButton.primary,
-                  child: const Text('Buy Airtime', style: SButton.primaryLabel),
+                  child: Text(l.buyAirtime, style: SButton.primaryLabel),
                 ),
               ),
             ],

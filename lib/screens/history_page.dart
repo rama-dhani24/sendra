@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 import 'package:sendra/screens/transaction_service.dart';
 import 'package:sendra/screens/receipt_screen.dart';
 
@@ -39,23 +40,26 @@ class _HistoryPageState extends State<HistoryPage>
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: SColors.bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: SColors.textSub,
-            size: 18,
-          ),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: textSub, size: 18),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Transaction History',
+        title: Text(
+          l.transactionHistory,
           style: TextStyle(
-            color: SColors.textPrimary,
+            color: textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -66,11 +70,11 @@ class _HistoryPageState extends State<HistoryPage>
         opacity: _fadeAnim,
         child: Column(
           children: [
-            _buildSummaryBar(),
+            _buildSummaryBar(context, l, isDark),
             const SizedBox(height: 12),
-            _buildFilterTabs(),
+            _buildFilterTabs(context, l, isDark),
             const SizedBox(height: 8),
-            Expanded(child: _buildList()),
+            Expanded(child: _buildList(context, l, isDark)),
           ],
         ),
       ),
@@ -78,7 +82,11 @@ class _HistoryPageState extends State<HistoryPage>
   }
 
   // ── Summary bar ───────────────────────────────────────────────────────────
-  Widget _buildSummaryBar() {
+  Widget _buildSummaryBar(
+    BuildContext context,
+    AppLocalizations l,
+    bool isDark,
+  ) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection(FSKeys.transactionsCollection)
@@ -114,20 +122,26 @@ class _HistoryPageState extends State<HistoryPage>
               Expanded(
                 child: _StatCard(
                   icon: Icons.arrow_upward_rounded,
-                  label: 'Total Sent',
+                  label: l.totalSent,
                   value: 'TZS ${Validators.formatNumber(totalSent)}',
-                  sub: '$sentCount transactions',
+                  sub: l.isSwahili
+                      ? '$sentCount miamala'
+                      : '$sentCount transactions',
                   color: SColors.red,
+                  isDark: isDark,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _StatCard(
                   icon: Icons.arrow_downward_rounded,
-                  label: 'Total Received',
+                  label: l.totalReceived,
                   value: 'TZS ${Validators.formatNumber(totalReceived)}',
-                  sub: '$receivedCount transactions',
+                  sub: l.isSwahili
+                      ? '$receivedCount miamala'
+                      : '$receivedCount transactions',
                   color: SColors.green,
+                  isDark: isDark,
                 ),
               ),
             ],
@@ -138,16 +152,24 @@ class _HistoryPageState extends State<HistoryPage>
   }
 
   // ── Filter tabs ───────────────────────────────────────────────────────────
-  Widget _buildFilterTabs() {
-    const labels = ['All', 'Sent', 'Received'];
+  Widget _buildFilterTabs(
+    BuildContext context,
+    AppLocalizations l,
+    bool isDark,
+  ) {
+    final labels = [l.all, l.sent, l.received];
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: SColors.navyCard,
+          color: cardColor,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: SColors.navyLight),
+          border: Border.all(color: borderColor),
         ),
         child: Row(
           children: List.generate(labels.length, (i) {
@@ -166,7 +188,7 @@ class _HistoryPageState extends State<HistoryPage>
                     child: Text(
                       labels[i],
                       style: TextStyle(
-                        color: active ? SColors.navy : SColors.textSub,
+                        color: active ? SColors.navy : textSub,
                         fontSize: 13,
                         fontWeight: active ? FontWeight.w700 : FontWeight.w400,
                       ),
@@ -182,7 +204,7 @@ class _HistoryPageState extends State<HistoryPage>
   }
 
   // ── Transaction list ──────────────────────────────────────────────────────
-  Widget _buildList() {
+  Widget _buildList(BuildContext context, AppLocalizations l, bool isDark) {
     Query<Map<String, dynamic>> q = FirebaseFirestore.instance.collection(
       FSKeys.transactionsCollection,
     );
@@ -217,8 +239,11 @@ class _HistoryPageState extends State<HistoryPage>
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'Error loading transactions.\n${snap.error}',
-                style: SText.caption,
+                '${l.isSwahili ? 'Hitilafu' : 'Error loading transactions'}.\n${snap.error}',
+                style: TextStyle(
+                  color: isDark ? SColors.textSub : SColors.lightTextSub,
+                  fontSize: 13,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -226,15 +251,14 @@ class _HistoryPageState extends State<HistoryPage>
         }
 
         final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) return _buildEmpty();
+        if (docs.isEmpty) return _buildEmpty(l, isDark);
 
-        // Group by date
         final grouped = <String, List<QueryDocumentSnapshot>>{};
         for (final doc in docs) {
           final data = doc.data()! as Map<String, dynamic>;
           final ts = data[TxKeys.createdAt] as Timestamp?;
           final dt = ts?.toDate() ?? DateTime.now();
-          grouped.putIfAbsent(_groupKey(dt), () => []).add(doc);
+          grouped.putIfAbsent(_groupKey(dt, l), () => []).add(doc);
         }
 
         return ListView.builder(
@@ -251,8 +275,8 @@ class _HistoryPageState extends State<HistoryPage>
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Text(
                     dateKey,
-                    style: const TextStyle(
-                      color: SColors.textSub,
+                    style: TextStyle(
+                      color: isDark ? SColors.textSub : SColors.lightTextSub,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.3,
@@ -260,7 +284,12 @@ class _HistoryPageState extends State<HistoryPage>
                   ),
                 ),
                 ...txDocs.map(
-                  (doc) => _TxCard(doc: doc, userId: widget.userId),
+                  (doc) => _TxCard(
+                    doc: doc,
+                    userId: widget.userId,
+                    isDark: isDark,
+                    l: l,
+                  ),
                 ),
               ],
             );
@@ -270,12 +299,17 @@ class _HistoryPageState extends State<HistoryPage>
     );
   }
 
-  Widget _buildEmpty() {
-    const msgs = [
-      'No transactions yet.',
-      'No sent transactions.',
-      'No received transactions.',
+  Widget _buildEmpty(AppLocalizations l, bool isDark) {
+    final msgs = [
+      l.noTransactions,
+      l.isSwahili ? 'Hakuna miamala iliyotumwa.' : 'No sent transactions.',
+      l.isSwahili
+          ? 'Hakuna miamala iliyopokelewa.'
+          : 'No received transactions.',
     ];
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -284,30 +318,28 @@ class _HistoryPageState extends State<HistoryPage>
             width: 68,
             height: 68,
             decoration: BoxDecoration(
-              color: SColors.navyCard,
+              color: isDark ? SColors.navyCard : SColors.lightCard,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Icon(
-              Icons.receipt_long_rounded,
-              color: SColors.textDim,
-              size: 28,
-            ),
+            child: Icon(Icons.receipt_long_rounded, color: textDim, size: 28),
           ),
           const SizedBox(height: 14),
-          Text(msgs[_filter], style: SText.caption),
+          Text(msgs[_filter], style: TextStyle(color: textSub, fontSize: 13)),
           const SizedBox(height: 4),
-          Text('Your transactions will appear here.', style: SText.tiny),
+          Text(l.txWillAppear, style: TextStyle(color: textDim, fontSize: 11)),
         ],
       ),
     );
   }
 
-  String _groupKey(DateTime dt) {
+  String _groupKey(DateTime dt, AppLocalizations l) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final d = DateTime(dt.year, dt.month, dt.day);
-    if (d == today) return 'Today';
-    if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
+    if (d == today) return l.today;
+    if (d == today.subtract(const Duration(days: 1))) {
+      return l.yesterday;
+    }
     const m = [
       'Jan',
       'Feb',
@@ -326,11 +358,19 @@ class _HistoryPageState extends State<HistoryPage>
   }
 }
 
-// ─── Transaction card ─────────────────────────────────────────────────────
+// ─── Transaction card ──────────────────────────────────────────────────────
 class _TxCard extends StatelessWidget {
   final QueryDocumentSnapshot doc;
   final String userId;
-  const _TxCard({required this.doc, required this.userId});
+  final bool isDark;
+  final AppLocalizations l;
+
+  const _TxCard({
+    required this.doc,
+    required this.userId,
+    required this.isDark,
+    required this.l,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -363,6 +403,12 @@ class _TxCard extends StatelessWidget {
     final txId = '#${doc.id.substring(0, 8).toUpperCase()}';
     final status = data[TxKeys.status] as String? ?? 'completed';
 
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final dividerColor = isDark ? SColors.navyBorder : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return GestureDetector(
       onTap: () {
         final tx = TransactionModel(
@@ -392,9 +438,9 @@ class _TxCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: SColors.navyCard,
+          color: cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: SColors.navyLight),
+          border: Border.all(color: borderColor),
         ),
         child: Column(
           children: [
@@ -450,15 +496,18 @@ class _TxCard extends StatelessWidget {
                     children: [
                       Text(
                         counterparty,
-                        style: const TextStyle(
-                          color: SColors.textPrimary,
+                        style: TextStyle(
+                          color: textPrimary,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text('ID $counterAcc · $time', style: SText.tiny),
+                      Text(
+                        'ID $counterAcc · $time',
+                        style: TextStyle(color: textDim, fontSize: 11),
+                      ),
                     ],
                   ),
                 ),
@@ -479,27 +528,24 @@ class _TxCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       isSender
-                          ? '−TZS ${Validators.formatNumber(totalDebited)} total'
-                          : '+TZS ${Validators.formatNumber(amountTzs)} gross',
-                      style: const TextStyle(
-                        color: SColors.textDim,
-                        fontSize: 10,
-                      ),
+                          ? '−TZS ${Validators.formatNumber(totalDebited)} ${l.isSwahili ? 'jumla' : 'total'}'
+                          : '+TZS ${Validators.formatNumber(amountTzs)} ${l.isSwahili ? 'kabla' : 'gross'}',
+                      style: TextStyle(color: textDim, fontSize: 10),
                     ),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            Container(height: 1, color: SColors.navyBorder),
+            Container(height: 1, color: dividerColor),
             const SizedBox(height: 8),
             Row(
               children: [
-                Text(txId, style: SText.tiny),
+                Text(txId, style: TextStyle(color: textDim, fontSize: 11)),
                 const Spacer(),
                 if (isSender && feeTzs > 0) ...[
                   _badge(
-                    'Fee TZS ${Validators.formatNumber(feeTzs)}',
+                    '${l.isSwahili ? 'Ada' : 'Fee'} TZS ${Validators.formatNumber(feeTzs)}',
                     SColors.red,
                   ),
                   const SizedBox(width: 6),
@@ -509,11 +555,7 @@ class _TxCard extends StatelessWidget {
                   SColors.green,
                 ),
                 const SizedBox(width: 6),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: SColors.textDim,
-                  size: 14,
-                ),
+                Icon(Icons.chevron_right_rounded, color: textDim, size: 14),
               ],
             ),
           ],
@@ -540,22 +582,29 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final String label, value, sub;
   final Color color;
+  final bool isDark;
+
   const _StatCard({
     required this.icon,
     required this.label,
     required this.value,
     required this.sub,
     required this.color,
+    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: SColors.navyCard,
+        color: cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: SColors.navyLight),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -573,10 +622,7 @@ class _StatCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(color: SColors.textDim, fontSize: 10),
-                ),
+                Text(label, style: TextStyle(color: textDim, fontSize: 10)),
                 const SizedBox(height: 2),
                 Text(
                   value,
@@ -587,7 +633,7 @@ class _StatCard extends StatelessWidget {
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(sub, style: SText.tiny),
+                Text(sub, style: TextStyle(color: textDim, fontSize: 11)),
               ],
             ),
           ),

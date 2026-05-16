@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 
 class ReceivePage extends StatelessWidget {
   final String userId;
@@ -24,12 +25,12 @@ class ReceivePage extends StatelessWidget {
     return parts.first.isNotEmpty ? parts.first[0].toUpperCase() : 'S';
   }
 
-  void _copyId(BuildContext context) {
+  void _copyId(BuildContext context, AppLocalizations l) {
     Clipboard.setData(ClipboardData(text: accNumber));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Sendra ID $accNumber copied!',
+          'Sendra ID $accNumber ${l.isSwahili ? 'imenakiliwa!' : 'copied!'}',
           style: const TextStyle(color: SColors.navy),
         ),
         backgroundColor: SColors.gold,
@@ -42,23 +43,31 @@ class ReceivePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final digitBg = isDark ? SColors.navy : SColors.lightBg;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: SColors.bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: SColors.textSub,
-            size: 18,
-          ),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: textSub, size: 18),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Receive Money',
+        title: Text(
+          l.isSwahili ? 'Pokea Pesa' : 'Receive Money',
           style: TextStyle(
-            color: SColors.textPrimary,
+            color: textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -71,7 +80,7 @@ class ReceivePage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
           child: Column(
             children: [
-              // ── Instruction ─────────────────────────────────────────────
+              // ── Instruction banner ───────────────────────────────────────
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -89,9 +98,12 @@ class ReceivePage extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Share your Sendra ID with the sender. '
-                        'They use it to send money directly to your wallet.',
-                        style: SText.caption,
+                        l.isSwahili
+                            ? 'Shiriki Sendra ID yako na mtumaji. '
+                                  'Watatumia kutuma pesa moja kwa moja kwenye mkoba wako.'
+                            : 'Share your Sendra ID with the sender. '
+                                  'They use it to send money directly to your wallet.',
+                        style: TextStyle(color: textSub, fontSize: 13),
                       ),
                     ),
                   ],
@@ -99,7 +111,7 @@ class ReceivePage extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // ── Avatar ──────────────────────────────────────────────────
+              // ── Avatar ───────────────────────────────────────────────────
               Container(
                 width: 80,
                 height: 80,
@@ -126,33 +138,37 @@ class ReceivePage extends StatelessWidget {
 
               Text(
                 userName,
-                style: const TextStyle(
-                  color: SColors.textPrimary,
+                style: TextStyle(
+                  color: textPrimary,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Sendra Account',
-                style: TextStyle(color: SColors.textSub, fontSize: 13),
+              Text(
+                l.isSwahili ? 'Akaunti ya Sendra' : 'Sendra Account',
+                style: TextStyle(color: textSub, fontSize: 13),
               ),
               const SizedBox(height: 32),
 
-              // ── Big Sendra ID ────────────────────────────────────────────
+              // ── Big Sendra ID card ───────────────────────────────────────
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(32),
-                decoration: SDecor.balanceCard,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: borderColor),
+                ),
                 child: Column(
                   children: [
-                    const Text(
-                      'Sendra ID',
-                      style: TextStyle(color: SColors.textSub, fontSize: 13),
+                    Text(
+                      l.sendraId,
+                      style: TextStyle(color: textSub, fontSize: 13),
                     ),
                     const SizedBox(height: 16),
 
-                    // Large digit display
+                    // Digit tiles
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: accNumber.split('').map((d) {
@@ -161,7 +177,7 @@ class ReceivePage extends StatelessWidget {
                           height: 56,
                           margin: const EdgeInsets.symmetric(horizontal: 4),
                           decoration: BoxDecoration(
-                            color: SColors.navy,
+                            color: digitBg,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: SColors.gold.withOpacity(0.3),
@@ -182,59 +198,50 @@ class ReceivePage extends StatelessWidget {
                       }).toList(),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Your unique 5-digit identifier',
-                      style: TextStyle(color: SColors.textDim, fontSize: 11),
+                    Text(
+                      l.isSwahili
+                          ? 'Kitambulisho chako cha kipekee cha tarakimu 5'
+                          : 'Your unique 5-digit identifier',
+                      style: TextStyle(color: textDim, fontSize: 11),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 28),
 
-              // ── Action buttons ───────────────────────────────────────────
+              // ── Copy button ──────────────────────────────────────────────
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => _copyId(context),
+                  onPressed: () => _copyId(context, l),
                   style: SButton.primary,
                   icon: const Icon(
                     Icons.copy_rounded,
                     color: SColors.navy,
                     size: 18,
                   ),
-                  label: const Text(
-                    'Copy Sendra ID',
-                    style: SButton.primaryLabel,
-                  ),
+                  label: Text(l.copyId, style: SButton.primaryLabel),
                 ),
               ),
               const SizedBox(height: 12),
 
+              // ── Share button ─────────────────────────────────────────────
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    // Share via OS share sheet
-                    // share_plus: Share.share(...)
-                    // For demo just copy
-                    _copyId(context);
-                  },
+                  onPressed: () => _copyId(context, l),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: SColors.navyLight, width: 1),
+                    side: BorderSide(color: borderColor, width: 1),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  icon: const Icon(
-                    Icons.share_outlined,
-                    color: SColors.textSub,
-                    size: 18,
-                  ),
-                  label: const Text(
-                    'Share ID',
+                  icon: Icon(Icons.share_outlined, color: textSub, size: 18),
+                  label: Text(
+                    l.isSwahili ? 'Shiriki ID' : 'Share ID',
                     style: TextStyle(
-                      color: SColors.textSub,
+                      color: textSub,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
@@ -246,25 +253,52 @@ class ReceivePage extends StatelessWidget {
               // ── How it works ─────────────────────────────────────────────
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: SDecor.card,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'How to receive money',
+                    Text(
+                      l.isSwahili
+                          ? 'Jinsi ya kupokea pesa'
+                          : 'How to receive money',
                       style: TextStyle(
-                        color: SColors.textPrimary,
+                        color: textPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 14),
-                    _step('1', 'Share your 5-digit Sendra ID with the sender'),
-                    _step('2', 'They enter your ID on the Send Money screen'),
-                    _step('3', 'Your name appears for confirmation'),
+                    _step(
+                      '1',
+                      l.isSwahili
+                          ? 'Shiriki Sendra ID yako ya tarakimu 5 na mtumaji'
+                          : 'Share your 5-digit Sendra ID with the sender',
+                      textSub,
+                    ),
+                    _step(
+                      '2',
+                      l.isSwahili
+                          ? 'Wanaingiza ID yako kwenye skrini ya Tuma Pesa'
+                          : 'They enter your ID on the Send Money screen',
+                      textSub,
+                    ),
+                    _step(
+                      '3',
+                      l.isSwahili
+                          ? 'Jina lako linaonekana kwa uthibitisho'
+                          : 'Your name appears for confirmation',
+                      textSub,
+                    ),
                     _step(
                       '4',
-                      'Once they confirm, money arrives instantly in TZS',
+                      l.isSwahili
+                          ? 'Wakithibitisha, pesa inafika mara moja kwa TZS'
+                          : 'Once they confirm, money arrives instantly in TZS',
+                      textSub,
                     ),
                   ],
                 ),
@@ -273,7 +307,7 @@ class ReceivePage extends StatelessWidget {
               const SizedBox(height: 24),
 
               // ── Recent received ──────────────────────────────────────────
-              _RecentReceived(userId: userId),
+              _RecentReceived(userId: userId, isDark: isDark, l: l),
             ],
           ),
         ),
@@ -281,7 +315,7 @@ class ReceivePage extends StatelessWidget {
     );
   }
 
-  Widget _step(String num, String text) {
+  Widget _step(String num, String text, Color textColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -307,10 +341,7 @@ class ReceivePage extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: SColors.textSub, fontSize: 13),
-            ),
+            child: Text(text, style: TextStyle(color: textColor, fontSize: 13)),
           ),
         ],
       ),
@@ -321,10 +352,23 @@ class ReceivePage extends StatelessWidget {
 // ── Recent received transactions ───────────────────────────────────────────
 class _RecentReceived extends StatelessWidget {
   final String userId;
-  const _RecentReceived({required this.userId});
+  final bool isDark;
+  final AppLocalizations l;
+
+  const _RecentReceived({
+    required this.userId,
+    required this.isDark,
+    required this.l,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection(FSKeys.transactionsCollection)
@@ -339,10 +383,12 @@ class _RecentReceived extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Recently received',
+            Text(
+              l.isSwahili
+                  ? 'Zilizopokelewa hivi karibuni'
+                  : 'Recently received',
               style: TextStyle(
-                color: SColors.textSub,
+                color: textSub,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.4,
@@ -364,7 +410,11 @@ class _RecentReceived extends StatelessWidget {
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(14),
-                decoration: SDecor.card,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -385,15 +435,15 @@ class _RecentReceived extends StatelessWidget {
                         children: [
                           Text(
                             from,
-                            style: const TextStyle(
-                              color: SColors.textPrimary,
+                            style: TextStyle(
+                              color: textPrimary,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           Text(
-                            '${sentAmt.toStringAsFixed(2)} $sentCur · ${_fmtDate(dt)}',
-                            style: SText.tiny,
+                            '${sentAmt.toStringAsFixed(2)} $sentCur · ${_fmtDate(dt, l)}',
+                            style: TextStyle(color: textDim, fontSize: 11),
                           ),
                         ],
                       ),
@@ -416,14 +466,15 @@ class _RecentReceived extends StatelessWidget {
     );
   }
 
-  String _fmtDate(DateTime dt) {
+  String _fmtDate(DateTime dt, AppLocalizations l) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final d = DateTime(dt.year, dt.month, dt.day);
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
-    if (d == today) return 'Today $h:$m';
-    if (d == today.subtract(const Duration(days: 1))) return 'Yesterday $h:$m';
+    if (d == today) return '${l.today} $h:$m';
+    if (d == today.subtract(const Duration(days: 1)))
+      return '${l.yesterday} $h:$m';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }

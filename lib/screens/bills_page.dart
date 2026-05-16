@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 
 class BillsPage extends StatefulWidget {
   final String userId;
@@ -26,23 +26,27 @@ class _BillsPageState extends State<BillsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: SColors.bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: SColors.textSub,
-            size: 18,
-          ),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: textSub, size: 18),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Pay Bills',
+        title: Text(
+          l.payBills,
           style: TextStyle(
-            color: SColors.textPrimary,
+            color: textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -50,27 +54,37 @@ class _BillsPageState extends State<BillsPage> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: _selectedBill == null ? _buildSelector() : _buildForm(),
+        child: _selectedBill == null
+            ? _buildSelector(context, l, isDark)
+            : _buildForm(context, l, isDark),
       ),
     );
   }
 
-  Widget _buildSelector() {
+  Widget _buildSelector(BuildContext context, AppLocalizations l, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text('Select a bill to pay', style: SText.caption),
+        Text(
+          l.isSwahili ? 'Chagua bili ya kulipa' : 'Select a bill to pay',
+          style: TextStyle(color: textSub, fontSize: 13),
+        ),
         const SizedBox(height: 16),
-        ...(_bills.map(
+        ..._bills.map(
           (b) => GestureDetector(
             onTap: () => setState(() => _selectedBill = b['name'] as String),
             child: Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: SColors.navyCard,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: SColors.navyLight),
+                border: Border.all(color: borderColor),
               ),
               child: Row(
                 children: [
@@ -92,28 +106,34 @@ class _BillsPageState extends State<BillsPage> {
                   Expanded(
                     child: Text(
                       b['name'] as String,
-                      style: const TextStyle(
-                        color: SColors.textPrimary,
+                      style: TextStyle(
+                        color: textPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
-                    color: SColors.textDim,
+                    color: isDark ? SColors.textDim : SColors.lightTextDim,
                     size: 18,
                   ),
                 ],
               ),
             ),
           ),
-        )),
+        ),
       ],
     );
   }
 
-  Widget _buildForm() {
+  Widget _buildForm(BuildContext context, AppLocalizations l, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     final amountCtrl = TextEditingController();
     final accountCtrl = TextEditingController();
 
@@ -133,7 +153,7 @@ class _BillsPageState extends State<BillsPage> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'Back to bills',
+                  l.isSwahili ? 'Rudi kwa bili' : 'Back to bills',
                   style: const TextStyle(color: SColors.gold, fontSize: 13),
                 ),
               ],
@@ -142,58 +162,99 @@ class _BillsPageState extends State<BillsPage> {
           const SizedBox(height: 20),
           Text(
             _selectedBill!,
-            style: const TextStyle(
-              color: SColors.textPrimary,
+            style: TextStyle(
+              color: textPrimary,
               fontSize: 20,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            'Available: TZS ${Validators.formatNumber(widget.balanceTzs)}',
-            style: SText.caption,
+            '${l.availableBalance}: TZS ${Validators.formatNumber(widget.balanceTzs)}',
+            style: TextStyle(color: textSub, fontSize: 13),
           ),
           const SizedBox(height: 24),
-          Text('Account / Meter Number', style: SText.label),
+
+          Text(
+            l.isSwahili
+                ? 'Nambari ya Akaunti / Mita'
+                : 'Account / Meter Number',
+            style: TextStyle(
+              color: textSub,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 8),
           Container(
-            decoration: SDecor.inputField,
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
+            ),
             child: TextField(
               controller: accountCtrl,
               keyboardType: TextInputType.number,
-              style: SText.body,
-              decoration: SDecor.textInput(
-                hint: 'Enter number',
-                prefix: const Icon(
-                  Icons.numbers_rounded,
-                  color: SColors.textDim,
-                  size: 18,
+              style: TextStyle(color: textPrimary, fontSize: 15),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                hintText: l.isSwahili ? 'Weka nambari' : 'Enter number',
+                hintStyle: TextStyle(color: textDim, fontSize: 15),
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Icon(Icons.numbers_rounded, color: textDim, size: 18),
+                ),
+                prefixIconConstraints: const BoxConstraints(
+                  minWidth: 0,
+                  minHeight: 0,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
                 ),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          Text('Amount (TZS)', style: SText.label),
+
+          Text(
+            '${l.amount} (TZS)',
+            style: TextStyle(
+              color: textSub,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 8),
           Container(
-            decoration: SDecor.inputField,
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
+            ),
             child: TextField(
               controller: amountCtrl,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              style: const TextStyle(
-                color: SColors.textPrimary,
+              style: TextStyle(
+                color: textPrimary,
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
               ),
-              decoration: SDecor.textInput(
-                hint: '0',
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                hintText: '0',
+                hintStyle: TextStyle(color: textDim, fontSize: 22),
                 prefixText: 'TZS  ',
                 prefixStyle: const TextStyle(
                   color: SColors.gold,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
                 ),
               ),
             ),
@@ -205,20 +266,22 @@ class _BillsPageState extends State<BillsPage> {
               onPressed: () => showDialog(
                 context: context,
                 builder: (_) => AlertDialog(
-                  backgroundColor: SColors.navyCard,
+                  backgroundColor: cardColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  title: const Text(
-                    'Coming Soon',
+                  title: Text(
+                    l.comingSoon,
                     style: TextStyle(
-                      color: SColors.textPrimary,
+                      color: textPrimary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   content: Text(
-                    'Bill payments coming in next release.',
-                    style: SText.caption,
+                    l.isSwahili
+                        ? 'Malipo ya bili yanakuja.'
+                        : 'Bill payments coming in next release.',
+                    style: TextStyle(color: textSub, fontSize: 13),
                   ),
                   actions: [
                     TextButton(
@@ -232,7 +295,7 @@ class _BillsPageState extends State<BillsPage> {
                 ),
               ),
               style: SButton.primary,
-              child: const Text('Pay Now', style: SButton.primaryLabel),
+              child: Text(l.payNow, style: SButton.primaryLabel),
             ),
           ),
         ],

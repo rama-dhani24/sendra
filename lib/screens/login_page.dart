@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 import 'package:sendra/screens/home_screen.dart';
 import 'package:sendra/screens/signup_page.dart';
 
@@ -47,28 +48,30 @@ class _LoginPageState extends State<LoginPage>
     super.dispose();
   }
 
-  // Firebase Auth password format — must match signup_page.dart
   String _authPassword(String pin) => '${pin}_sendra';
 
   Future<void> _login() async {
     if (_loading) return;
+    final l = AppLocalizations.of(context);
 
-    final phone = _phoneCtrl.text.replaceAll(RegExp(r'\D'), '').trim();
+    final phone =
+        _phoneCtrl.text.replaceAll(RegExp(r'\D'), '').trim();
     final pin = _pinCtrl.text.trim();
 
     if (phone.isEmpty || pin.isEmpty) {
-      setState(() => _errorMessage = 'Please enter your phone number and PIN.');
+      setState(() => _errorMessage = l.isSwahili
+          ? 'Tafadhali weka nambari ya simu na PIN.'
+          : 'Please enter your phone number and PIN.');
       return;
     }
     if (!Validators.isValidTZPhone(phone)) {
-      setState(
-        () => _errorMessage =
-            'Enter a valid Tanzanian phone number (e.g. 0779122997).',
-      );
+      setState(() => _errorMessage = l.isSwahili
+          ? 'Weka nambari sahihi ya simu ya Tanzania.'
+          : 'Enter a valid Tanzanian phone number (e.g. 0779122997).');
       return;
     }
     if (!Validators.isValidPin(pin)) {
-      setState(() => _errorMessage = 'PIN must be exactly 4 digits.');
+      setState(() => _errorMessage = l.pinMust4Digits);
       return;
     }
 
@@ -78,32 +81,28 @@ class _LoginPageState extends State<LoginPage>
     });
 
     try {
-      // ── Step 1: Sign in with Firebase Auth ───────────────────────────────
-      // Auth uses ${pin}_sendra format set at signup
       final email = '$phone@sendra.app';
       final password = _authPassword(pin);
 
       UserCredential credential;
       try {
-        credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
+        credential = await FirebaseAuth.instance
+            .signInWithEmailAndPassword(
+                email: email, password: password);
       } on FirebaseAuthException catch (e) {
         if (!mounted) return;
         setState(() {
-          _errorMessage =
-              (e.code == 'wrong-password' || e.code == 'invalid-credential')
-              ? 'Incorrect PIN. Please try again.'
+          _errorMessage = (e.code == 'wrong-password' ||
+                  e.code == 'invalid-credential')
+              ? l.incorrectPin
               : e.code == 'user-not-found'
-              ? 'No account found with this phone number.'
-              : 'Login failed. Please try again.';
+                  ? l.accountNotFound
+                  : l.loginFailed;
           _loading = false;
         });
         return;
       }
 
-      // ── Step 2: Load user profile from Firestore ─────────────────────────
       final uid = credential.user!.uid;
       final snap = await FirebaseFirestore.instance
           .collection(FSKeys.usersCollection)
@@ -115,26 +114,24 @@ class _LoginPageState extends State<LoginPage>
       if (!snap.exists) {
         await FirebaseAuth.instance.signOut();
         setState(() {
-          _errorMessage = 'Account data not found. Please sign up again.';
+          _errorMessage = l.isSwahili
+              ? 'Data ya akaunti haikupatikana. Tafadhali jiandikishe tena.'
+              : 'Account data not found. Please sign up again.';
           _loading = false;
         });
         return;
       }
 
-      // ── Step 3: Sync Firestore PIN with Auth PIN (keep in sync) ──────────
-      // If user's Firestore pin differs from what they logged in with,
-      // update Firestore to match Auth (Auth is source of truth at login)
       final data = snap.data()!;
-      final firestorePin = (data[FSKeys.pin] ?? '').toString().trim();
+      final firestorePin =
+          (data[FSKeys.pin] ?? '').toString().trim();
       if (firestorePin != pin) {
-        // Silently sync Firestore PIN to match the one that worked in Auth
         await FirebaseFirestore.instance
             .collection(FSKeys.usersCollection)
             .doc(uid)
             .update({FSKeys.pin: pin});
       }
 
-      // ── Step 4: Navigate to home ──────────────────────────────────────────
       setState(() => _loading = false);
       await Future.delayed(const Duration(milliseconds: 100));
       if (!mounted) return;
@@ -152,44 +149,61 @@ class _LoginPageState extends State<LoginPage>
     } on FirebaseException catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = _friendlyMessage(e);
+          _errorMessage = _friendlyMessage(e, AppLocalizations.of(context));
           _loading = false;
         });
       }
     } on TimeoutException {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Login timed out. Please try again.';
+          _errorMessage = AppLocalizations.of(context).isSwahili
+              ? 'Muda wa kuingia umekwisha. Jaribu tena.'
+              : 'Login timed out. Please try again.';
           _loading = false;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Unable to log in right now.';
+          _errorMessage = AppLocalizations.of(context).loginFailed;
           _loading = false;
         });
       }
     }
   }
 
-  String _friendlyMessage(FirebaseException e) {
+  String _friendlyMessage(
+      FirebaseException e, AppLocalizations l) {
     switch (e.code) {
       case 'permission-denied':
-        return 'Permission denied. Please try again.';
+        return l.isSwahili
+            ? 'Ruhusa imekataliwa. Jaribu tena.'
+            : 'Permission denied. Please try again.';
       case 'unavailable':
-        return 'Firebase is temporarily unavailable.';
+        return l.isSwahili
+            ? 'Huduma haipatikani kwa sasa.'
+            : 'Firebase is temporarily unavailable.';
       case 'deadline-exceeded':
-        return 'The request took too long. Please try again.';
+        return l.isSwahili
+            ? 'Ombi lilichukua muda mrefu. Jaribu tena.'
+            : 'The request took too long. Please try again.';
       default:
-        return e.message ?? 'A database error occurred during login.';
+        return e.message ?? l.loginFailed;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final textPrimary =
+        isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       body: Stack(
         children: [
           FadeTransition(
@@ -201,13 +215,13 @@ class _LoginPageState extends State<LoginPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _SendraLogo(),
+                    _SendraLogo(isDark: isDark),
                     const SizedBox(height: 48),
-                    _buildHeading(),
+                    _buildHeading(l, isDark),
                     const SizedBox(height: 36),
-                    _buildPhoneField(),
+                    _buildPhoneField(l, isDark),
                     const SizedBox(height: 16),
-                    _buildPinField(),
+                    _buildPinField(l, isDark),
                     if (_errorMessage.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       _ErrorBox(message: _errorMessage),
@@ -227,25 +241,33 @@ class _LoginPageState extends State<LoginPage>
                                   strokeWidth: 2.5,
                                 ),
                               )
-                            : const Text('Log In', style: SButton.primaryLabel),
+                            : Text(l.logIn,
+                                style: SButton.primaryLabel),
                       ),
                     ),
                     const SizedBox(height: 20),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(AppStrings.noAccount, style: SText.caption),
+                        Text(l.noAccount,
+                            style: TextStyle(
+                                color: textSub, fontSize: 13)),
                         GestureDetector(
                           onTap: _loading
                               ? null
-                              : () => Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(
-                                    builder: (_) => const SignUpPage(),
+                              : () =>
+                                  Navigator.of(context).pushReplacement(
+                                    MaterialPageRoute(
+                                      builder: (_) => const SignUpPage(),
+                                    ),
                                   ),
-                                ),
                           child: Text(
-                            AppStrings.signUpLink,
-                            style: SText.goldAccent,
+                            l.signUp,
+                            style: const TextStyle(
+                              color: SColors.gold,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -261,21 +283,19 @@ class _LoginPageState extends State<LoginPage>
                 absorbing: true,
                 child: Container(
                   color: Colors.black.withOpacity(0.55),
-                  child: const Center(
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(
+                        const CircularProgressIndicator(
                           color: SColors.gold,
                           strokeWidth: 3,
                         ),
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         Text(
-                          'Logging you in...',
+                          l.loggingIn,
                           style: TextStyle(
-                            color: SColors.textPrimary,
-                            fontSize: 14,
-                          ),
+                              color: textPrimary, fontSize: 14),
                         ),
                       ],
                     ),
@@ -288,7 +308,11 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  Widget _buildHeading() {
+  Widget _buildHeading(AppLocalizations l, bool isDark) {
+    final textPrimary =
+        isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -298,45 +322,64 @@ class _LoginPageState extends State<LoginPage>
             color: SColors.gold.withOpacity(0.10),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Icon(
-            Icons.lock_outline_rounded,
-            color: SColors.gold,
-            size: 28,
-          ),
+          child: const Icon(Icons.lock_outline_rounded,
+              color: SColors.gold, size: 28),
         ),
         const SizedBox(height: 20),
-        Text(AppStrings.welcomeBack, style: SText.heading),
+        Text(l.welcomeBack,
+            style: TextStyle(
+                color: textPrimary,
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5)),
         const SizedBox(height: 6),
-        Text(AppStrings.loginSubtitle, style: SText.caption),
+        Text(l.loginSubtitle,
+            style: TextStyle(color: textSub, fontSize: 13)),
       ],
     );
   }
 
-  Widget _buildPhoneField() {
+  Widget _buildPhoneField(AppLocalizations l, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor =
+        isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary =
+        isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Phone Number', style: SText.label),
+        Text(l.phoneNumber,
+            style: TextStyle(
+                color: textSub,
+                fontSize: 13,
+                fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         Container(
-          decoration: SDecor.inputField,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 14,
-                ),
-                decoration: const BoxDecoration(
+                    horizontal: 14, vertical: 14),
+                decoration: BoxDecoration(
                   border: Border(
-                    right: BorderSide(color: SColors.navyLight, width: 1),
-                  ),
+                      right: BorderSide(color: borderColor, width: 1)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Text('🇹🇿', style: TextStyle(fontSize: 16)),
-                    SizedBox(width: 6),
-                    Text('+255', style: SText.caption),
+                    const Text('🇹🇿',
+                        style: TextStyle(fontSize: 16)),
+                    const SizedBox(width: 6),
+                    Text('+255',
+                        style: TextStyle(
+                            color: textSub, fontSize: 13)),
                   ],
                 ),
               ),
@@ -349,9 +392,15 @@ class _LoginPageState extends State<LoginPage>
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(10),
                   ],
-                  style: SText.body,
-                  decoration: SDecor.textInput(
-                    hint: AppStrings.phonePlaceholder,
+                  style: TextStyle(
+                      color: textPrimary, fontSize: 15),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '07XXXXXXXX',
+                    hintStyle: TextStyle(
+                        color: textDim, fontSize: 15),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                   ),
                 ),
               ),
@@ -362,14 +411,30 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  Widget _buildPinField() {
+  Widget _buildPinField(AppLocalizations l, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor =
+        isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary =
+        isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('PIN', style: SText.label),
+        Text(l.pin,
+            style: TextStyle(
+                color: textSub,
+                fontSize: 13,
+                fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         Container(
-          decoration: SDecor.inputField,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
           child: TextField(
             controller: _pinCtrl,
             obscureText: _pinHidden,
@@ -380,26 +445,37 @@ class _LoginPageState extends State<LoginPage>
               LengthLimitingTextInputFormatter(4),
             ],
             onSubmitted: (_) => _login(),
-            style: const TextStyle(
-              color: SColors.textPrimary,
+            style: TextStyle(
+              color: textPrimary,
               fontSize: 22,
               letterSpacing: 10,
               fontWeight: FontWeight.w700,
             ),
-            decoration: SDecor.textInput(
-              hint: '••••',
-              suffix: GestureDetector(
-                onTap: _loading
-                    ? null
-                    : () => setState(() => _pinHidden = !_pinHidden),
-                child: Icon(
-                  _pinHidden
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
-                  color: _loading ? SColors.navyLight : SColors.textDim,
-                  size: 18,
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: '••••',
+              hintStyle: TextStyle(color: textDim, fontSize: 15),
+              suffixIcon: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12),
+                child: GestureDetector(
+                  onTap: _loading
+                      ? null
+                      : () => setState(
+                          () => _pinHidden = !_pinHidden),
+                  child: Icon(
+                    _pinHidden
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: _loading ? borderColor : textDim,
+                    size: 18,
+                  ),
                 ),
               ),
+              suffixIconConstraints:
+                  const BoxConstraints(minWidth: 0, minHeight: 0),
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 14),
             ),
           ),
         ),
@@ -408,11 +484,15 @@ class _LoginPageState extends State<LoginPage>
   }
 }
 
-// ─── Shared widgets ──────────────────────────────────────────────────────────
+// ─── Shared widgets ───────────────────────────────────────────────────────────
 class _SendraLogo extends StatelessWidget {
-  const _SendraLogo();
+  final bool isDark;
+  const _SendraLogo({required this.isDark});
+
   @override
   Widget build(BuildContext context) {
+    final textPrimary =
+        isDark ? SColors.textPrimary : SColors.lightTextPrimary;
     return Row(
       children: [
         Container(
@@ -428,7 +508,7 @@ class _SendraLogo extends StatelessWidget {
           ),
           child: const Center(
             child: Text(
-              AppStrings.logoLetter,
+              'S',
               style: TextStyle(
                 color: SColors.navy,
                 fontSize: 20,
@@ -438,7 +518,14 @@ class _SendraLogo extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        Text(AppStrings.appName, style: SText.appBarTitle),
+        Text(
+          'Sendra',
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ],
     );
   }
@@ -447,6 +534,7 @@ class _SendraLogo extends StatelessWidget {
 class _ErrorBox extends StatelessWidget {
   final String message;
   const _ErrorBox({required this.message});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -454,7 +542,8 @@ class _ErrorBox extends StatelessWidget {
       decoration: SDecor.errorBox,
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: SColors.red, size: 16),
+          const Icon(Icons.error_outline,
+              color: SColors.red, size: 16),
           const SizedBox(width: 8),
           Expanded(child: Text(message, style: SText.errorText)),
         ],

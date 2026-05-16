@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 
 class WithdrawPage extends StatefulWidget {
   final String userId;
@@ -44,23 +45,30 @@ class _WithdrawPageState extends State<WithdrawPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: SColors.bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: SColors.textSub,
-            size: 18,
-          ),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: textSub, size: 18),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Withdraw',
+        title: Text(
+          l.withdrawTitle,
           style: TextStyle(
-            color: SColors.textPrimary,
+            color: textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -73,10 +81,14 @@ class _WithdrawPageState extends State<WithdrawPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Balance
+              // ── Balance card ─────────────────────────────────────────
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: SDecor.card,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -96,11 +108,14 @@ class _WithdrawPageState extends State<WithdrawPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Available Balance', style: SText.tiny),
+                        Text(
+                          l.availableBalance,
+                          style: TextStyle(color: textDim, fontSize: 11),
+                        ),
                         Text(
                           'TZS ${Validators.formatNumber(widget.balanceTzs)}',
-                          style: const TextStyle(
-                            color: SColors.textPrimary,
+                          style: TextStyle(
+                            color: textPrimary,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -112,8 +127,15 @@ class _WithdrawPageState extends State<WithdrawPage> {
               ),
               const SizedBox(height: 24),
 
-              // Method selector
-              Text('Withdrawal Method', style: SText.label),
+              // ── Method selector ──────────────────────────────────────
+              Text(
+                l.withdrawalMethod,
+                style: TextStyle(
+                  color: textSub,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
@@ -128,12 +150,10 @@ class _WithdrawPageState extends State<WithdrawPage> {
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: sel
-                            ? SColors.gold.withOpacity(0.15)
-                            : SColors.navyCard,
+                        color: sel ? SColors.gold.withOpacity(0.15) : cardColor,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: sel ? SColors.gold : SColors.navyLight,
+                          color: sel ? SColors.gold : borderColor,
                           width: sel ? 1.5 : 1,
                         ),
                       ),
@@ -148,7 +168,7 @@ class _WithdrawPageState extends State<WithdrawPage> {
                           Text(
                             m,
                             style: TextStyle(
-                              color: sel ? SColors.gold : SColors.textSub,
+                              color: sel ? SColors.gold : textSub,
                               fontSize: 13,
                               fontWeight: sel
                                   ? FontWeight.w700
@@ -163,11 +183,22 @@ class _WithdrawPageState extends State<WithdrawPage> {
               ),
               const SizedBox(height: 20),
 
-              // Phone
-              Text('Mobile Number', style: SText.label),
+              // ── Phone number ─────────────────────────────────────────
+              Text(
+                l.mobileNumber,
+                style: TextStyle(
+                  color: textSub,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
               Container(
-                decoration: SDecor.inputField,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderColor),
+                ),
                 child: TextField(
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
@@ -175,24 +206,48 @@ class _WithdrawPageState extends State<WithdrawPage> {
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(10),
                   ],
-                  style: SText.body,
-                  decoration: SDecor.textInput(
-                    hint: '07XXXXXXXX',
-                    prefix: const Icon(
-                      Icons.phone_outlined,
-                      color: SColors.textDim,
-                      size: 18,
+                  style: TextStyle(color: textPrimary, fontSize: 15),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '07XXXXXXXX',
+                    hintStyle: TextStyle(color: textDim, fontSize: 15),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Icon(
+                        Icons.phone_outlined,
+                        color: textDim,
+                        size: 18,
+                      ),
+                    ),
+                    prefixIconConstraints: const BoxConstraints(
+                      minWidth: 0,
+                      minHeight: 0,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
 
-              // Amount
-              Text('Amount (TZS)', style: SText.label),
+              // ── Amount ───────────────────────────────────────────────
+              Text(
+                '${l.amount} (TZS)',
+                style: TextStyle(
+                  color: textSub,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
               Container(
-                decoration: SDecor.inputField,
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderColor),
+                ),
                 child: TextField(
                   controller: _amountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(
@@ -204,50 +259,60 @@ class _WithdrawPageState extends State<WithdrawPage> {
                     ),
                   ],
                   onChanged: (_) => setState(() {}),
-                  style: const TextStyle(
-                    color: SColors.textPrimary,
+                  style: TextStyle(
+                    color: textPrimary,
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                   ),
-                  decoration: SDecor.textInput(
-                    hint: '0',
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '0',
+                    hintStyle: TextStyle(color: textDim, fontSize: 22),
                     prefixText: 'TZS  ',
                     prefixStyle: const TextStyle(
                       color: SColors.gold,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                   ),
                 ),
               ),
 
+              // ── Fee breakdown ────────────────────────────────────────
               if (_amount > 0) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: SColors.navyCard,
+                    color: cardColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: SColors.navyLight),
+                    border: Border.all(color: borderColor),
                   ),
                   child: Column(
                     children: [
                       _row(
-                        'Withdrawal amount',
+                        l.isSwahili ? 'Kiasi cha kutoa' : 'Withdrawal amount',
                         'TZS ${Validators.formatNumber(_amount)}',
-                        SColors.textPrimary,
+                        textPrimary,
+                        textSub,
                       ),
                       const SizedBox(height: 6),
                       _row(
-                        'Fee (1%)',
+                        l.isSwahili ? 'Ada (1%)' : 'Fee (1%)',
                         '- TZS ${Validators.formatNumber(_fee)}',
                         SColors.red,
+                        textSub,
                       ),
-                      const Divider(color: SColors.navyLight, height: 16),
+                      Divider(color: borderColor, height: 16),
                       _row(
-                        'You receive',
+                        l.isSwahili ? 'Utapokea' : 'You receive',
                         'TZS ${Validators.formatNumber(_amount - _fee)}',
                         SColors.green,
+                        textSub,
                         bold: true,
                       ),
                     ],
@@ -255,6 +320,7 @@ class _WithdrawPageState extends State<WithdrawPage> {
                 ),
               ],
 
+              // ── Error box ────────────────────────────────────────────
               if (_error.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -278,7 +344,15 @@ class _WithdrawPageState extends State<WithdrawPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
+                  onPressed: _loading
+                      ? null
+                      : () => _submit(
+                          context,
+                          l,
+                          cardColor,
+                          textPrimary,
+                          textSub,
+                        ),
                   style: SButton.primary,
                   child: _loading
                       ? const SizedBox(
@@ -289,7 +363,7 @@ class _WithdrawPageState extends State<WithdrawPage> {
                             strokeWidth: 2.5,
                           ),
                         )
-                      : const Text('Withdraw Now', style: SButton.primaryLabel),
+                      : Text(l.withdrawNow, style: SButton.primaryLabel),
                 ),
               ),
 
@@ -311,8 +385,10 @@ class _WithdrawPageState extends State<WithdrawPage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Withdrawals are processed within 1-5 minutes. Available 24/7.',
-                        style: SText.tiny.copyWith(color: SColors.textSub),
+                        l.isSwahili
+                            ? 'Kutoa pesa huchukua dakika 1-5. Inapatikana masaa 24/7.'
+                            : 'Withdrawals are processed within 1-5 minutes. Available 24/7.',
+                        style: TextStyle(color: textSub, fontSize: 11),
                       ),
                     ),
                   ],
@@ -325,14 +401,20 @@ class _WithdrawPageState extends State<WithdrawPage> {
     );
   }
 
-  Widget _row(String l, String v, Color vc, {bool bold = false}) => Row(
+  Widget _row(
+    String label,
+    String value,
+    Color valueColor,
+    Color labelColor, {
+    bool bold = false,
+  }) => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text(l, style: SText.caption),
+      Text(label, style: TextStyle(color: labelColor, fontSize: 13)),
       Text(
-        v,
+        value,
         style: TextStyle(
-          color: vc,
+          color: valueColor,
           fontSize: bold ? 14 : 13,
           fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
         ),
@@ -340,38 +422,50 @@ class _WithdrawPageState extends State<WithdrawPage> {
     ],
   );
 
-  void _submit() {
+  void _submit(
+    BuildContext context,
+    AppLocalizations l,
+    Color cardColor,
+    Color textPrimary,
+    Color textSub,
+  ) {
     setState(() => _error = '');
     final phone = _phoneCtrl.text.trim();
     if (phone.isEmpty || !Validators.isValidTZPhone(phone)) {
-      setState(() => _error = 'Enter a valid Tanzanian phone number.');
+      setState(
+        () => _error = l.isSwahili
+            ? 'Weka nambari sahihi ya simu ya Tanzania.'
+            : 'Enter a valid Tanzanian phone number.',
+      );
       return;
     }
     if (_amount <= 0) {
-      setState(() => _error = 'Enter a valid amount.');
+      setState(
+        () => _error = l.isSwahili
+            ? 'Weka kiasi sahihi.'
+            : 'Enter a valid amount.',
+      );
       return;
     }
     if (_total > widget.balanceTzs) {
-      setState(() => _error = 'Insufficient balance.');
+      setState(() => _error = l.insufficientBal);
       return;
     }
 
-    // Show coming soon for MVP
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: SColors.navyCard,
+        backgroundColor: cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Coming Soon',
-          style: TextStyle(
-            color: SColors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
+        title: Text(
+          l.comingSoon,
+          style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700),
         ),
         content: Text(
-          'Mobile money withdrawals will be available in the next release.',
-          style: SText.caption,
+          l.isSwahili
+              ? 'Kutoa pesa kupitia simu kutapatikana katika toleo lijalo.'
+              : 'Mobile money withdrawals will be available in the next release.',
+          style: TextStyle(color: textSub, fontSize: 13),
         ),
         actions: [
           TextButton(
