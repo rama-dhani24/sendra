@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sendra/core/theme.dart';
 import 'package:sendra/core/constants.dart';
+import 'package:sendra/core/app_localizations.dart';
 import 'package:sendra/screens/transaction_service.dart';
 import 'package:sendra/services/exchange_rate_service.dart';
 import 'package:sendra/screens/receipt_screen.dart';
@@ -109,35 +110,49 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     return (r?.spread ?? AppRates.spread) * 100;
   }
 
-  String get _rateLabel {
+  String _rateLabel(AppLocalizations l) {
     final r = ExchangeRateService.instance.latest;
     final tzs = r != null
         ? r.toTzs(_currency, 1.0)
         : AppRates.toTzs(_currency, 1.0);
-    return '1 $_currency ≈ TZS ${Validators.formatNumber(tzs)} (${_spreadPct.toStringAsFixed(1)}% spread)';
+    return '1 $_currency ≈ TZS ${Validators.formatNumber(tzs)} '
+        '(${_spreadPct.toStringAsFixed(1)}% ${l.isSwahili ? 'tofauti' : 'spread'})';
   }
 
   // ── Step 0 → 1: find receiver ─────────────────────────────────────────────
-  Future<void> _lookupReceiver() async {
+  Future<void> _lookupReceiver(AppLocalizations l) async {
     setState(() => _error = '');
     final acc = _accCtrl.text.trim();
 
     if (acc.isEmpty) {
-      setState(() => _error = 'Enter the recipient\'s Sendra ID.');
+      setState(
+        () => _error = l.isSwahili
+            ? 'Weka Sendra ID ya mpokeaji.'
+            : 'Enter the recipient\'s Sendra ID.',
+      );
       return;
     }
     if (acc == widget.sender.accNumber) {
-      setState(() => _error = 'Cannot send to yourself.');
+      setState(
+        () => _error = l.isSwahili
+            ? 'Hauwezi kutuma kwa mwenyewe.'
+            : 'Cannot send to yourself.',
+      );
       return;
     }
     if (_sent <= 0) {
-      setState(() => _error = 'Enter a valid amount.');
+      setState(
+        () => _error = l.isSwahili
+            ? 'Weka kiasi sahihi.'
+            : 'Enter a valid amount.',
+      );
       return;
     }
     if (_totalDebit > widget.sender.balanceTzs) {
       setState(
-        () => _error =
-            'Insufficient balance. Need TZS ${Validators.formatNumber(_totalDebit)} (incl. fee).',
+        () => _error = l.isSwahili
+            ? 'Salio haitoshi. Unahitaji TZS ${Validators.formatNumber(_totalDebit)} (pamoja na ada).'
+            : 'Insufficient balance. Need TZS ${Validators.formatNumber(_totalDebit)} (incl. fee).',
       );
       return;
     }
@@ -147,7 +162,9 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       final found = await TransactionService.findUserByAccNumber(acc);
       if (found == null) {
         setState(() {
-          _error = 'No account found with ID "$acc".';
+          _error = l.isSwahili
+              ? 'Akaunti yenye ID "$acc" haikupatikana.'
+              : 'No account found with ID "$acc".';
           _searching = false;
         });
         return;
@@ -179,19 +196,18 @@ class _SendMoneyPageState extends State<SendMoneyPage>
       ..forward();
   }
 
-  // ── Step 2: verify PIN via Firestore, then execute ──────────────────────
-  Future<void> _confirmAndSend() async {
+  // ── Step 2: verify PIN then execute ──────────────────────────────────────
+  Future<void> _confirmAndSend(AppLocalizations l) async {
     setState(() => _error = '');
     final pin = _pinCtrl.text.trim();
     if (!Validators.isValidPin(pin)) {
-      setState(() => _error = 'Enter your 4-digit PIN.');
+      setState(() => _error = l.pinMust4Digits);
       return;
     }
 
     setState(() => _sending = true);
 
     try {
-      // Read PIN directly from Firestore — most reliable, no Auth format issues
       final userSnap = await FirebaseFirestore.instance
           .collection(FSKeys.usersCollection)
           .doc(widget.sender.docId)
@@ -199,7 +215,9 @@ class _SendMoneyPageState extends State<SendMoneyPage>
 
       if (!userSnap.exists) {
         setState(() {
-          _error = 'Account not found. Please log in again.';
+          _error = l.isSwahili
+              ? 'Akaunti haikupatikana. Tafadhali ingia tena.'
+              : 'Account not found. Please log in again.';
           _sending = false;
         });
         return;
@@ -209,13 +227,12 @@ class _SendMoneyPageState extends State<SendMoneyPage>
 
       if (storedPin != pin) {
         setState(() {
-          _error = 'Incorrect PIN. Please try again.';
+          _error = l.incorrectPin;
           _sending = false;
         });
         return;
       }
 
-      // PIN correct — execute transaction
       final tx = await TransactionService.sendMoney(
         sender: widget.sender,
         receiver: _receiver!,
@@ -239,17 +256,27 @@ class _SendMoneyPageState extends State<SendMoneyPage>
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bgColor = isDark ? SColors.bg : SColors.lightBg;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
+    final stepTitles = [
+      l.sendMoney,
+      l.isSwahili ? 'Thibitisha Maelezo' : 'Confirm Details',
+      l.isSwahili ? 'Weka PIN' : 'Enter PIN',
+    ];
+
     return Scaffold(
-      backgroundColor: SColors.bg,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: SColors.bg,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: SColors.textSub,
-            size: 18,
-          ),
+          icon: Icon(Icons.arrow_back_ios_rounded, color: textSub, size: 18),
           onPressed: () {
             if (_step == 0) {
               Navigator.of(context).pop();
@@ -266,8 +293,12 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           },
         ),
         title: Text(
-          ['Send Money', 'Confirm Details', 'Enter PIN'][_step],
-          style: SText.sectionTitle,
+          stepTitles[_step],
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         centerTitle: true,
       ),
@@ -280,17 +311,17 @@ class _SendMoneyPageState extends State<SendMoneyPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStepBar(),
+                _buildStepBar(isDark),
                 const SizedBox(height: 28),
-                if (_step == 0) _buildStep0(),
-                if (_step == 1) _buildStep1(),
-                if (_step == 2) _buildStep2(),
+                if (_step == 0) _buildStep0(l, isDark),
+                if (_step == 1) _buildStep1(l, isDark),
+                if (_step == 2) _buildStep2(l, isDark),
                 if (_error.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   _ErrorBox(message: _error),
                 ],
                 const SizedBox(height: 28),
-                _buildButton(),
+                _buildButton(l, isDark),
               ],
             ),
           ),
@@ -299,7 +330,13 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  Widget _buildStepBar() {
+  // ── Step progress bar ─────────────────────────────────────────────────────
+  Widget _buildStepBar(bool isDark) {
+    final inactiveColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final inactiveBorder = isDark ? SColors.navyLight : SColors.lightBorder;
+    final inactiveLineColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Row(
       children: List.generate(5, (i) {
         if (i.isOdd) {
@@ -307,7 +344,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
             child: Container(
               height: 2,
               margin: const EdgeInsets.symmetric(horizontal: 6),
-              color: _step >= (i ~/ 2) + 1 ? SColors.gold : SColors.navyLight,
+              color: _step >= (i ~/ 2) + 1 ? SColors.gold : inactiveLineColor,
             ),
           );
         }
@@ -317,10 +354,10 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: active ? SColors.gold : SColors.navyCard,
+            color: active ? SColors.gold : inactiveColor,
             shape: BoxShape.circle,
             border: Border.all(
-              color: active ? SColors.gold : SColors.navyLight,
+              color: active ? SColors.gold : inactiveBorder,
               width: 2,
             ),
           ),
@@ -330,7 +367,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                 : Text(
                     '${idx + 1}',
                     style: TextStyle(
-                      color: active ? SColors.navy : SColors.textDim,
+                      color: active ? SColors.navy : textDim,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -341,15 +378,26 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  // ── Step 0 ────────────────────────────────────────────────────────────────
-  Widget _buildStep0() {
+  // ── Step 0: details ───────────────────────────────────────────────────────
+  Widget _buildStep0(AppLocalizations l, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
     final symbol = _symbols[_currency] ?? _currency;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Balance card
         Container(
           padding: const EdgeInsets.all(14),
-          decoration: SDecor.card,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
           child: Row(
             children: [
               Container(
@@ -369,11 +417,14 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Available Balance', style: SText.tiny),
+                  Text(
+                    l.availableBalance,
+                    style: TextStyle(color: textDim, fontSize: 11),
+                  ),
                   Text(
                     'TZS ${Validators.formatNumber(widget.sender.balanceTzs)}',
-                    style: const TextStyle(
-                      color: SColors.textPrimary,
+                    style: TextStyle(
+                      color: textPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
@@ -385,7 +436,15 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 24),
 
-        Text('Sending Currency', style: SText.label),
+        // Currency selector
+        Text(
+          l.sendingCurrency,
+          style: TextStyle(
+            color: textSub,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 10),
         Row(
           children: _currencies.map((c) {
@@ -397,12 +456,10 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                   margin: const EdgeInsets.only(right: 8),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
-                    color: sel
-                        ? SColors.gold.withOpacity(0.15)
-                        : SColors.navyCard,
+                    color: sel ? SColors.gold.withOpacity(0.15) : cardColor,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: sel ? SColors.gold : SColors.navyLight,
+                      color: sel ? SColors.gold : borderColor,
                       width: sel ? 1.5 : 1,
                     ),
                   ),
@@ -416,7 +473,7 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                       Text(
                         c,
                         style: TextStyle(
-                          color: sel ? SColors.gold : SColors.textSub,
+                          color: sel ? SColors.gold : textSub,
                           fontSize: 11,
                           fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
                         ),
@@ -429,13 +486,25 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           }).toList(),
         ),
         const SizedBox(height: 8),
-        Text(_rateLabel, style: SText.tiny),
+        Text(_rateLabel(l), style: TextStyle(color: textDim, fontSize: 11)),
         const SizedBox(height: 20),
 
-        Text('Amount ($symbol)', style: SText.label),
+        // Amount field
+        Text(
+          '${l.amount} ($symbol)',
+          style: TextStyle(
+            color: textSub,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 8),
         Container(
-          decoration: SDecor.inputField,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
           child: TextField(
             controller: _amountCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -443,31 +512,38 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,6}')),
             ],
             onChanged: (_) => setState(() {}),
-            style: const TextStyle(
-              color: SColors.textPrimary,
+            style: TextStyle(
+              color: textPrimary,
               fontSize: 22,
               fontWeight: FontWeight.w700,
             ),
-            decoration: SDecor.textInput(
-              hint: '0',
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: '0',
+              hintStyle: TextStyle(color: textDim, fontSize: 22),
               prefixText: '$symbol  ',
               prefixStyle: const TextStyle(
                 color: SColors.gold,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
           ),
         ),
 
+        // Live conversion breakdown
         if (_sent > 0) ...[
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: SColors.navyCard,
+              color: cardColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: SColors.navyLight),
+              border: Border.all(color: borderColor),
             ),
             child: Column(
               children: [
@@ -479,7 +555,12 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                       size: 14,
                     ),
                     const SizedBox(width: 6),
-                    Text('Live conversion', style: SText.tiny),
+                    Text(
+                      l.isSwahili
+                          ? 'Ubadilishaji wa moja kwa moja'
+                          : 'Live conversion',
+                      style: TextStyle(color: textDim, fontSize: 11),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -487,32 +568,37 @@ class _SendMoneyPageState extends State<SendMoneyPage>
                   _convRow(
                     '$_currency → USDT',
                     '≈ ${Validators.formatUsdt(_usdtAmt)} USDT',
-                    SColors.textSub,
+                    textSub,
+                    textSub,
                   ),
                   const SizedBox(height: 6),
                 ],
                 _convRow(
                   'USDT → TZS',
                   'TZS ${Validators.formatNumber(_tzsReceived)}',
+                  textSub,
                   SColors.green,
                 ),
-                const Divider(color: SColors.navyLight, height: 20),
+                Divider(color: borderColor, height: 20),
                 _convRow(
-                  'Fee (1%)',
+                  l.transactionFee,
                   '− TZS ${Validators.formatNumber(_feeTzs)}',
+                  textSub,
                   SColors.red,
                 ),
-                const Divider(color: SColors.navyLight, height: 20),
+                Divider(color: borderColor, height: 20),
                 _convRow(
-                  'Recipient gets',
+                  l.recipientGets,
                   'TZS ${Validators.formatNumber(_tzsReceived)}',
+                  textSub,
                   SColors.green,
                   bold: true,
                 ),
                 _convRow(
-                  'Total deducted',
+                  l.totalDeducted,
                   'TZS ${Validators.formatNumber(_totalDebit)}',
-                  SColors.textPrimary,
+                  textSub,
+                  textPrimary,
                   bold: true,
                 ),
               ],
@@ -521,10 +607,23 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ],
 
         const SizedBox(height: 24),
-        Text('Recipient Sendra ID', style: SText.label),
+
+        // Recipient ID field
+        Text(
+          l.recipientId,
+          style: TextStyle(
+            color: textSub,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 8),
         Container(
-          decoration: SDecor.inputField,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
           child: TextField(
             controller: _accCtrl,
             keyboardType: TextInputType.number,
@@ -532,55 +631,85 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(5),
             ],
-            style: const TextStyle(
-              color: SColors.textPrimary,
+            style: TextStyle(
+              color: textPrimary,
               fontSize: 20,
               fontWeight: FontWeight.w700,
               letterSpacing: 4,
             ),
-            decoration: SDecor.textInput(
-              hint: '00000',
-              prefix: const Icon(
-                Icons.tag_rounded,
-                color: SColors.textDim,
-                size: 18,
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: '00000',
+              hintStyle: TextStyle(color: textDim, fontSize: 20),
+              prefixIcon: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Icon(Icons.tag_rounded, color: textDim, size: 18),
+              ),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 0,
+                minHeight: 0,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
               ),
             ),
           ),
         ),
         const SizedBox(height: 6),
-        Text('5-digit Sendra ID of the recipient', style: SText.tiny),
+        Text(
+          l.isSwahili
+              ? 'Sendra ID ya tarakimu 5 ya mpokeaji'
+              : '5-digit Sendra ID of the recipient',
+          style: TextStyle(color: textDim, fontSize: 11),
+        ),
       ],
     );
   }
 
-  Widget _convRow(String label, String value, Color vc, {bool bold = false}) =>
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: SText.caption),
-          Text(
-            value,
-            style: TextStyle(
-              color: vc,
-              fontSize: bold ? 14 : 13,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
-            ),
-          ),
-        ],
-      );
+  Widget _convRow(
+    String label,
+    String value,
+    Color labelColor,
+    Color valueColor, {
+    bool bold = false,
+  }) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(label, style: TextStyle(color: labelColor, fontSize: 13)),
+      Text(
+        value,
+        style: TextStyle(
+          color: valueColor,
+          fontSize: bold ? 14 : 13,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+        ),
+      ),
+    ],
+  );
 
   // ── Step 1: preview ───────────────────────────────────────────────────────
-  Widget _buildStep1() {
+  Widget _buildStep1(AppLocalizations l, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+
     final r = _receiver!;
     final symbol = _symbols[_currency] ?? _currency;
     final flag = _flags[_currency] ?? '';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Recipient card
         Container(
           padding: const EdgeInsets.all(20),
-          decoration: SDecor.balanceCard,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor),
+          ),
           child: Column(
             children: [
               Container(
@@ -608,15 +737,15 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               const SizedBox(height: 12),
               Text(
                 r.fullName,
-                style: const TextStyle(
-                  color: SColors.textPrimary,
+                style: TextStyle(
+                  color: textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                'Sendra ID: ${r.accNumber}',
+                '${l.sendraId}: ${r.accNumber}',
                 style: const TextStyle(color: SColors.gold, fontSize: 13),
               ),
             ],
@@ -624,49 +753,69 @@ class _SendMoneyPageState extends State<SendMoneyPage>
         ),
         const SizedBox(height: 20),
 
+        // Transaction breakdown rows
         _pRow(
-          'You send',
+          l.isSwahili ? 'Unatuma' : 'You send',
           '$flag $symbol ${_sent.toStringAsFixed(4)} $_currency',
-          SColors.textPrimary,
+          textSub,
+          textPrimary,
         ),
-        _div(),
+        _div(borderColor),
+
         if (_currency != 'USDT') ...[
           _pRow(
-            'Converted to USDT',
+            l.isSwahili ? 'Imebadilishwa hadi USDT' : 'Converted to USDT',
             '≈ ${Validators.formatUsdt(_usdtAmt)} USDT',
-            SColors.textSub,
+            textSub,
+            textSub,
           ),
-          _div(),
+          _div(borderColor),
         ],
+
         _pRow(
-          'Converted to TZS',
+          l.isSwahili ? 'Imebadilishwa hadi TZS' : 'Converted to TZS',
           'TZS ${Validators.formatNumber(_tzsReceived)}',
-          SColors.textPrimary,
+          textSub,
+          textPrimary,
         ),
-        _div(),
-        _pRow('Spread', '${_spreadPct.toStringAsFixed(1)}%', SColors.textSub),
-        _div(),
+        _div(borderColor),
+
         _pRow(
-          'Transaction fee (1%)',
+          l.isSwahili ? 'Tofauti' : 'Spread',
+          '${_spreadPct.toStringAsFixed(1)}%',
+          textSub,
+          textSub,
+        ),
+        _div(borderColor),
+
+        _pRow(
+          l.transactionFee,
           '− TZS ${Validators.formatNumber(_feeTzs)}',
+          textSub,
           SColors.red,
         ),
-        _div(),
+        _div(borderColor),
+
         _pRow(
-          'Recipient gets',
+          l.recipientGets,
           'TZS ${Validators.formatNumber(_tzsReceived)}',
+          textSub,
           SColors.green,
           bold: true,
         ),
-        _div(),
+        _div(borderColor),
+
         _pRow(
-          'Total debited',
+          l.totalDeducted,
           'TZS ${Validators.formatNumber(_totalDebit)}',
-          SColors.textPrimary,
+          textSub,
+          textPrimary,
           bold: true,
         ),
 
         const SizedBox(height: 20),
+
+        // Warning banner
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -680,8 +829,8 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Review carefully. This transaction cannot be reversed.',
-                  style: SText.tiny.copyWith(color: SColors.textSub),
+                  l.irreversibleWarn,
+                  style: TextStyle(color: textSub, fontSize: 11),
                 ),
               ),
             ],
@@ -691,17 +840,25 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  Widget _pRow(String l, String v, Color vc, {bool bold = false}) => Padding(
+  Widget _pRow(
+    String label,
+    String value,
+    Color labelColor,
+    Color valueColor, {
+    bool bold = false,
+  }) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Flexible(child: Text(l, style: SText.caption)),
+        Flexible(
+          child: Text(label, style: TextStyle(color: labelColor, fontSize: 13)),
+        ),
         const SizedBox(width: 12),
         Text(
-          v,
+          value,
           style: TextStyle(
-            color: vc,
+            color: valueColor,
             fontSize: bold ? 15 : 14,
             fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
           ),
@@ -710,10 +867,16 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     ),
   );
 
-  Widget _div() => Container(height: 1, color: SColors.navyLight);
+  Widget _div(Color color) => Container(height: 1, color: color);
 
   // ── Step 2: PIN ───────────────────────────────────────────────────────────
-  Widget _buildStep2() {
+  Widget _buildStep2(AppLocalizations l, bool isDark) {
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
+    final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -732,21 +895,45 @@ class _SendMoneyPageState extends State<SendMoneyPage>
           ),
         ),
         const SizedBox(height: 20),
-        Center(child: Text('Authorize Transaction', style: SText.title)),
+        Center(
+          child: Text(
+            l.authorizeTransaction,
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
         const SizedBox(height: 6),
         Center(
           child: Text(
-            'Sending ${_symbols[_currency] ?? ''} ${_sent.toStringAsFixed(2)} $_currency\n'
-            '→ TZS ${Validators.formatNumber(_tzsReceived)} to ${_receiver!.fullName}',
-            style: SText.caption,
+            l.isSwahili
+                ? 'Unatuma ${_symbols[_currency] ?? ''} ${_sent.toStringAsFixed(2)} $_currency\n'
+                      '→ TZS ${Validators.formatNumber(_tzsReceived)} kwa ${_receiver!.fullName}'
+                : 'Sending ${_symbols[_currency] ?? ''} ${_sent.toStringAsFixed(2)} $_currency\n'
+                      '→ TZS ${Validators.formatNumber(_tzsReceived)} to ${_receiver!.fullName}',
+            style: TextStyle(color: textSub, fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ),
         const SizedBox(height: 28),
-        Text('Your PIN', style: SText.label),
+
+        Text(
+          l.isSwahili ? 'PIN yako' : 'Your PIN',
+          style: TextStyle(
+            color: textSub,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 8),
         Container(
-          decoration: SDecor.inputField,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
           child: TextField(
             controller: _pinCtrl,
             obscureText: _pinHidden,
@@ -756,24 +943,37 @@ class _SendMoneyPageState extends State<SendMoneyPage>
               LengthLimitingTextInputFormatter(4),
             ],
             autofocus: true,
-            onSubmitted: (_) => _confirmAndSend(),
-            style: const TextStyle(
-              color: SColors.textPrimary,
+            onSubmitted: (_) => _confirmAndSend(l),
+            style: TextStyle(
+              color: textPrimary,
               fontSize: 28,
               letterSpacing: 14,
               fontWeight: FontWeight.w700,
             ),
-            decoration: SDecor.textInput(
-              hint: '••••',
-              suffix: GestureDetector(
-                onTap: () => setState(() => _pinHidden = !_pinHidden),
-                child: Icon(
-                  _pinHidden
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
-                  color: SColors.textDim,
-                  size: 18,
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: '••••',
+              hintStyle: TextStyle(color: textDim, fontSize: 15),
+              suffixIcon: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: GestureDetector(
+                  onTap: () => setState(() => _pinHidden = !_pinHidden),
+                  child: Icon(
+                    _pinHidden
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: textDim,
+                    size: 18,
+                  ),
                 ),
+              ),
+              suffixIconConstraints: const BoxConstraints(
+                minWidth: 0,
+                minHeight: 0,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
               ),
             ),
           ),
@@ -782,15 +982,24 @@ class _SendMoneyPageState extends State<SendMoneyPage>
     );
   }
 
-  Widget _buildButton() {
+  // ── Action button ─────────────────────────────────────────────────────────
+  Widget _buildButton(AppLocalizations l, bool isDark) {
     final loading = _searching || _sending;
     final symbol = _symbols[_currency] ?? _currency;
+
     final labels = [
-      'Find Recipient',
-      'Proceed to Confirm',
-      'Send $symbol ${_sent.toStringAsFixed(2)} → TZS',
+      l.findRecipient,
+      l.proceedConfirm,
+      l.isSwahili
+          ? 'Tuma $symbol ${_sent.toStringAsFixed(2)} → TZS'
+          : 'Send $symbol ${_sent.toStringAsFixed(2)} → TZS',
     ];
-    final actions = [_lookupReceiver, _goToPin, _confirmAndSend];
+
+    final actions = [
+      () => _lookupReceiver(l),
+      _goToPin,
+      () => _confirmAndSend(l),
+    ];
 
     return SizedBox(
       width: double.infinity,
@@ -813,24 +1022,30 @@ class _SendMoneyPageState extends State<SendMoneyPage>
 
   String _initials(String name) {
     final p = name.trim().split(' ');
-    if (p.length >= 2) return '${p.first[0]}${p.last[0]}'.toUpperCase();
+    if (p.length >= 2) {
+      return '${p.first[0]}${p.last[0]}'.toUpperCase();
+    }
     return p.first.isNotEmpty ? p.first[0].toUpperCase() : '?';
   }
 }
 
+// ─── Error box ────────────────────────────────────────────────────────────────
 class _ErrorBox extends StatelessWidget {
   final String message;
   const _ErrorBox({required this.message});
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: SDecor.errorBox,
-    child: Row(
-      children: [
-        const Icon(Icons.error_outline, color: SColors.red, size: 16),
-        const SizedBox(width: 8),
-        Expanded(child: Text(message, style: SText.errorText)),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: SDecor.errorBox,
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: SColors.red, size: 16),
+          const SizedBox(width: 8),
+          Expanded(child: Text(message, style: SText.errorText)),
+        ],
+      ),
+    );
+  }
 }
