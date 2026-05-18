@@ -55,6 +55,16 @@ class _HomeScreenState extends State<HomeScreen>
     return parts.first.isNotEmpty ? parts.first[0].toUpperCase() : 'U';
   }
 
+  // ── Time-based greeting ───────────────────────────────────────────────────
+  /// Returns the correct localized greeting based on the current hour.
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    final l = AppLocalizations.of(context);
+    if (hour < 12) return l.goodMorning;
+    if (hour < 17) return l.goodAfternoon;
+    return l.goodNight;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -241,7 +251,6 @@ class _HomeScreenState extends State<HomeScreen>
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
     final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
     final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
-    final l = AppLocalizations.of(context);
 
     // Read current theme mode from provider (no setState needed — provider
     // rebuilds the tree automatically when toggled)
@@ -283,10 +292,8 @@ class _HomeScreenState extends State<HomeScreen>
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                l.goodMorning,
-                style: TextStyle(color: textSub, fontSize: 13),
-              ),
+              // ── Time-based greeting ───────────────────────────────────────
+              Text(_greeting, style: TextStyle(color: textSub, fontSize: 13)),
               Text(
                 widget.userName,
                 style: TextStyle(

@@ -78,7 +78,12 @@ class AppLocalizations {
       : 'This phone number is already registered.';
 
   // ── Home ──────────────────────────────────────────────────────────────────
-  String get goodMorning => isSwahili ? 'Habari za asubuhi,' : 'Good morning,';
+  /// Time-based greetings — call the one matching the current hour.
+  String get goodMorning => isSwahili ? 'Habari ya Asubuhi,' : 'Good Morning,';
+  String get goodAfternoon =>
+      isSwahili ? 'Habari ya Mchana,' : 'Good Afternoon,';
+  String get goodNight => isSwahili ? 'Habari ya Usiku,' : 'Good Night,';
+
   String get totalBalance => isSwahili ? 'Jumla ya Salio' : 'Total Balance';
   String get recentTx =>
       isSwahili ? 'Miamala ya Hivi Karibuni' : 'Recent Transactions';
