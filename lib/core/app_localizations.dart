@@ -200,7 +200,7 @@ class AppLocalizations {
   String get transferNow => isSwahili ? 'Hamisha Sasa' : 'Transfer Now';
   String get payBills => isSwahili ? 'Lipa Bili' : 'Pay Bills';
   String get payNow => isSwahili ? 'Lipa Sasa' : 'Pay Now';
-  String get buyAirtime => isSwahili ? 'Nunua Muda wa Hewa' : 'Buy Airtime';
+  String get buyAirtime => isSwahili ? 'Nunua Muda wa Maongezi' : 'Buy Airtime';
   String get network => isSwahili ? 'Mtandao' : 'Network';
   String get mobileNumber => isSwahili ? 'Nambari ya Simu' : 'Mobile Number';
 }
