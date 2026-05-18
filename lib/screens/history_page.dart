@@ -38,6 +38,19 @@ class _HistoryPageState extends State<HistoryPage>
     super.dispose();
   }
 
+  // ── Sorted helper — used by both summary and list ─────────────────────────
+  /// Returns a stream with NO orderBy/Filter.or to avoid index requirements.
+  /// We filter & sort entirely on the client side.
+  Stream<QuerySnapshot> _streamAll() => FirebaseFirestore.instance
+      .collection(FSKeys.transactionsCollection)
+      .where(TxKeys.senderId, isEqualTo: widget.userId)
+      .snapshots();
+
+  Stream<QuerySnapshot> _streamReceived() => FirebaseFirestore.instance
+      .collection(FSKeys.transactionsCollection)
+      .where(TxKeys.receiverId, isEqualTo: widget.userId)
+      .snapshots();
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
@@ -82,33 +95,28 @@ class _HistoryPageState extends State<HistoryPage>
   }
 
   // ── Summary bar ───────────────────────────────────────────────────────────
+  // Uses two simple single-field queries — no composite index needed.
   Widget _buildSummaryBar(
     BuildContext context,
     AppLocalizations l,
     bool isDark,
   ) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(FSKeys.transactionsCollection)
-          .where(
-            Filter.or(
-              Filter(TxKeys.senderId, isEqualTo: widget.userId),
-              Filter(TxKeys.receiverId, isEqualTo: widget.userId),
-            ),
-          )
-          .snapshots(),
+    return StreamBuilder<List<QuerySnapshot>>(
+      stream: _combinedStream(),
       builder: (ctx, snap) {
         double totalSent = 0, totalReceived = 0;
         int sentCount = 0, receivedCount = 0;
 
-        for (final doc in snap.data?.docs ?? []) {
-          final data = doc.data()! as Map<String, dynamic>;
-          final isSender = data[TxKeys.senderId] == widget.userId;
-          if (isSender) {
+        if (snap.hasData) {
+          // snap.data![0] = sent docs, snap.data![1] = received docs
+          for (final doc in snap.data![0].docs) {
+            final data = doc.data()! as Map<String, dynamic>;
             totalSent +=
                 (data[TxKeys.totalDebitedTzs] as num?)?.toDouble() ?? 0;
             sentCount++;
-          } else {
+          }
+          for (final doc in snap.data![1].docs) {
+            final data = doc.data()! as Map<String, dynamic>;
             totalReceived +=
                 (data[TxKeys.receivedTzs] as num?)?.toDouble() ?? 0;
             receivedCount++;
@@ -149,6 +157,17 @@ class _HistoryPageState extends State<HistoryPage>
         );
       },
     );
+  }
+
+  /// Combines two streams into one to power the summary bar.
+  Stream<List<QuerySnapshot>> _combinedStream() {
+    return _streamAll().asyncMap((sent) async {
+      final received = await FirebaseFirestore.instance
+          .collection(FSKeys.transactionsCollection)
+          .where(TxKeys.receiverId, isEqualTo: widget.userId)
+          .get();
+      return [sent, received];
+    });
   }
 
   // ── Filter tabs ───────────────────────────────────────────────────────────
@@ -204,98 +223,154 @@ class _HistoryPageState extends State<HistoryPage>
   }
 
   // ── Transaction list ──────────────────────────────────────────────────────
+  // KEY FIX: Each filter uses a SIMPLE single-field where() with NO orderBy.
+  // Sorting and merging happen entirely client-side.
   Widget _buildList(BuildContext context, AppLocalizations l, bool isDark) {
-    Query<Map<String, dynamic>> q = FirebaseFirestore.instance.collection(
-      FSKeys.transactionsCollection,
-    );
-
     if (_filter == 1) {
-      q = q.where(TxKeys.senderId, isEqualTo: widget.userId);
+      // Sent only — single where, no composite index needed
+      return StreamBuilder<QuerySnapshot>(
+        stream: _streamAll(),
+        builder: (ctx, snap) =>
+            _buildListContent(ctx, snap, l, isDark, onlySent: true),
+      );
     } else if (_filter == 2) {
-      q = q.where(TxKeys.receiverId, isEqualTo: widget.userId);
+      // Received only — single where, no composite index needed
+      return StreamBuilder<QuerySnapshot>(
+        stream: _streamReceived(),
+        builder: (ctx, snap) =>
+            _buildListContent(ctx, snap, l, isDark, onlyReceived: true),
+      );
     } else {
-      q = q.where(
-        Filter.or(
-          Filter(TxKeys.senderId, isEqualTo: widget.userId),
-          Filter(TxKeys.receiverId, isEqualTo: widget.userId),
-        ),
+      // All — merge two streams client-side
+      return StreamBuilder<List<QuerySnapshot>>(
+        stream: _combinedStream(),
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: SColors.gold,
+                strokeWidth: 2,
+              ),
+            );
+          }
+          if (snap.hasError) {
+            return _errorWidget(snap.error.toString(), l, isDark);
+          }
+
+          // Merge both result sets
+          final allDocs = <QueryDocumentSnapshot>[
+            ...snap.data![0].docs,
+            ...snap.data![1].docs,
+          ];
+
+          return _renderDocs(allDocs, l, isDark);
+        },
       );
     }
-    q = q.orderBy(TxKeys.createdAt, descending: true);
+  }
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: q.snapshots(),
-      builder: (ctx, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-              color: SColors.gold,
-              strokeWidth: 2,
-            ),
-          );
-        }
-        if (snap.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
+  Widget _buildListContent(
+    BuildContext ctx,
+    AsyncSnapshot<QuerySnapshot> snap,
+    AppLocalizations l,
+    bool isDark, {
+    bool onlySent = false,
+    bool onlyReceived = false,
+  }) {
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const Center(
+        child: CircularProgressIndicator(color: SColors.gold, strokeWidth: 2),
+      );
+    }
+    if (snap.hasError) {
+      return _errorWidget(snap.error.toString(), l, isDark);
+    }
+
+    return _renderDocs(snap.data?.docs ?? [], l, isDark);
+  }
+
+  Widget _renderDocs(
+    List<QueryDocumentSnapshot> rawDocs,
+    AppLocalizations l,
+    bool isDark,
+  ) {
+    if (rawDocs.isEmpty) return _buildEmpty(l, isDark);
+
+    // Remove duplicates (a doc can appear in both sent & received streams
+    // if somehow a user is both sender and receiver — unlikely but safe)
+    final seen = <String>{};
+    final unique = rawDocs.where((d) => seen.add(d.id)).toList();
+
+    // Sort descending by createdAt (nulls go last)
+    unique.sort((a, b) {
+      final aTs =
+          (a.data() as Map<String, dynamic>)[TxKeys.createdAt] as Timestamp?;
+      final bTs =
+          (b.data() as Map<String, dynamic>)[TxKeys.createdAt] as Timestamp?;
+      if (aTs == null && bTs == null) return 0;
+      if (aTs == null) return 1;
+      if (bTs == null) return -1;
+      return bTs.compareTo(aTs);
+    });
+
+    // Group by date
+    final grouped = <String, List<QueryDocumentSnapshot>>{};
+    for (final doc in unique) {
+      final data = doc.data()! as Map<String, dynamic>;
+      final ts = data[TxKeys.createdAt] as Timestamp?;
+      final dt = ts?.toDate() ?? DateTime.now();
+      grouped.putIfAbsent(_groupKey(dt, l), () => []).add(doc);
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+      itemCount: grouped.length,
+      itemBuilder: (ctx, gi) {
+        final dateKey = grouped.keys.elementAt(gi);
+        final txDocs = grouped[dateKey]!;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
               child: Text(
-                '${l.isSwahili ? 'Hitilafu' : 'Error loading transactions'}.\n${snap.error}',
+                dateKey,
                 style: TextStyle(
                   color: isDark ? SColors.textSub : SColors.lightTextSub,
-                  fontSize: 13,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
                 ),
-                textAlign: TextAlign.center,
               ),
             ),
-          );
-        }
-
-        final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) return _buildEmpty(l, isDark);
-
-        final grouped = <String, List<QueryDocumentSnapshot>>{};
-        for (final doc in docs) {
-          final data = doc.data()! as Map<String, dynamic>;
-          final ts = data[TxKeys.createdAt] as Timestamp?;
-          final dt = ts?.toDate() ?? DateTime.now();
-          grouped.putIfAbsent(_groupKey(dt, l), () => []).add(doc);
-        }
-
-        return ListView.builder(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
-          itemCount: grouped.length,
-          itemBuilder: (ctx, gi) {
-            final dateKey = grouped.keys.elementAt(gi);
-            final txDocs = grouped[dateKey]!;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    dateKey,
-                    style: TextStyle(
-                      color: isDark ? SColors.textSub : SColors.lightTextSub,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ),
-                ...txDocs.map(
-                  (doc) => _TxCard(
-                    doc: doc,
-                    userId: widget.userId,
-                    isDark: isDark,
-                    l: l,
-                  ),
-                ),
-              ],
-            );
-          },
+            ...txDocs.map(
+              (doc) => _TxCard(
+                doc: doc,
+                userId: widget.userId,
+                isDark: isDark,
+                l: l,
+              ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _errorWidget(String error, AppLocalizations l, bool isDark) {
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          l.isSwahili
+              ? 'Hitilafu kupakia miamala.'
+              : 'Error loading transactions.',
+          style: TextStyle(color: textSub, fontSize: 13),
+          textAlign: TextAlign.center,
+        ),
+      ),
     );
   }
 
@@ -340,7 +415,7 @@ class _HistoryPageState extends State<HistoryPage>
     if (d == today.subtract(const Duration(days: 1))) {
       return l.yesterday;
     }
-    const m = [
+    const months = [
       'Jan',
       'Feb',
       'Mar',
@@ -354,7 +429,7 @@ class _HistoryPageState extends State<HistoryPage>
       'Nov',
       'Dec',
     ];
-    return '${dt.day} ${m[dt.month - 1]} ${dt.year}';
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 }
 

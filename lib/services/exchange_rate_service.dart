@@ -2,142 +2,133 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sendra/core/constants.dart';
 
-/// Reads live exchange rates from Firestore ( /config/exchange_rates )
-/// and exposes them as a stream so the UI rebuilds automatically.
-///
-/// The Cloud Function writes to this document every 30 minutes.
-/// Flutter never calls ExchangeRate-API or CoinGecko directly.
-///
-/// Usage (in main.dart or a provider):
-///   ExchangeRateService.instance.init();
-///
-/// Then anywhere in the app:
-///   AppRates.usdtToTzs   // always reflects live data
-///   ExchangeRateService.instance.stream  // stream of RateSnapshot
+// ─── Rate snapshot ────────────────────────────────────────────────────────────
+class RateSnapshot {
+  final double usdtToTzs;
+  final double spread;
+  final double feeRate;
+  final Map<String, double> fiat;
+  final Map<String, double> crypto;
+  final DateTime updatedAt;
+
+  const RateSnapshot({
+    required this.usdtToTzs,
+    required this.spread,
+    required this.feeRate,
+    required this.fiat,
+    required this.crypto,
+    required this.updatedAt,
+  });
+
+  // Convert any supported currency to TZS using live rates
+  double toTzs(String currency, double amount) {
+    if (currency == 'TZS') return amount;
+    if (currency == 'USDT') return amount * (1 - spread) * usdtToTzs;
+    final fiatRate = fiat[currency];
+    if (fiatRate != null) return amount * fiatRate * (1 - spread) * usdtToTzs;
+    final cryptoUsd = crypto[currency];
+    if (cryptoUsd != null) return amount * cryptoUsd * (1 - spread) * usdtToTzs;
+    return 0;
+  }
+}
+
+// ─── Exchange Rate Service ────────────────────────────────────────────────────
+// Singleton — subscribes once to Firestore on init(), patches AppRates in place,
+// and exposes a broadcast stream so any number of widgets can listen cheaply.
 class ExchangeRateService {
   ExchangeRateService._();
   static final instance = ExchangeRateService._();
 
-  final _firestore = FirebaseFirestore.instance;
-
-  // Broadcast stream — multiple widgets can listen simultaneously
+  // ── Internal state ────────────────────────────────────────────────────────
   final _controller = StreamController<RateSnapshot>.broadcast();
-  Stream<RateSnapshot> get stream => _controller.stream;
-
-  StreamSubscription<DocumentSnapshot>? _sub;
+  StreamSubscription? _firestoreSub;
   RateSnapshot? _latest;
+  bool _initialized = false;
+
+  // ── Public API ────────────────────────────────────────────────────────────
+
+  /// The broadcast stream — safe to listen to from multiple widgets.
+  /// Immediately emits the last snapshot if one is already loaded.
+  Stream<RateSnapshot> get stream {
+    if (_latest != null) {
+      // Emit cached value immediately so widgets don't show loading
+      return _controller.stream.startWithValue(_latest!);
+    }
+    return _controller.stream;
+  }
+
+  /// Latest snapshot, or null if not yet loaded.
   RateSnapshot? get latest => _latest;
 
-  /// Call once on app start (e.g. in main.dart after Firebase.initializeApp).
+  /// Call once from main() — sets up the single Firestore subscription.
   void init() {
-    _sub = _firestore
+    if (_initialized) return;
+    _initialized = true;
+
+    _firestoreSub = FirebaseFirestore.instance
         .collection('config')
         .doc('exchange_rates')
         .snapshots()
-        .listen(_onSnapshot, onError: _onError);
+        .listen(_onDoc, onError: _onError);
   }
 
   void dispose() {
-    _sub?.cancel();
+    _firestoreSub?.cancel();
     _controller.close();
   }
 
-  void _onSnapshot(DocumentSnapshot doc) {
+  // ── Internal handlers ─────────────────────────────────────────────────────
+  void _onDoc(DocumentSnapshot doc) {
     if (!doc.exists) return;
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return;
 
-    try {
-      final snapshot = RateSnapshot.fromFirestore(data);
-      _latest = snapshot;
+    // Parse rates
+    final usdtToTzs =
+        (data['usdtToTzs'] as num?)?.toDouble() ?? AppRates.usdtToTzs;
+    final spread = (data['spread'] as num?)?.toDouble() ?? AppRates.spread;
+    final feeRate =
+        (data['feeRate'] as num?)?.toDouble() ?? AppRates.exchangeFeeRate;
 
-      // Patch AppRates using named parameters — matches constants.dart signature
-      AppRates.applyLiveRates(
-        newUsdtToTzs: snapshot.usdtToTzs,
-        newFiat: snapshot.fiat,
-        newCrypto: snapshot.crypto,
-        newSpread: snapshot.spread,
-        newFeeRate: snapshot.feeRate,
-      );
+    final fiatRaw = data['fiat'] as Map<String, dynamic>? ?? {};
+    final cryptoRaw = data['crypto'] as Map<String, dynamic>? ?? {};
 
-      _controller.add(snapshot);
-    } catch (e, st) {
-      // Malformed document — keep using whatever we had before
-      _controller.addError(ExchangeRateError('Failed to parse rates: $e'), st);
-    }
-  }
+    final fiat = fiatRaw.map((k, v) => MapEntry(k, (v as num).toDouble()));
+    final crypto = cryptoRaw.map((k, v) => MapEntry(k, (v as num).toDouble()));
 
-  void _onError(Object error, StackTrace st) {
-    _controller.addError(ExchangeRateError('Firestore read error: $error'), st);
-  }
-}
-
-// ─── Rate Snapshot ─────────────────────────────────────────────────────────
-/// Immutable snapshot of all rates from Firestore.
-class RateSnapshot {
-  /// 1 unit of currency → USDT (mid-market, no spread applied yet)
-  final Map<String, double> fiat;
-
-  /// 1 USDT = X TZS (receiving-side rate)
-  final double usdtToTzs;
-
-  /// Crypto prices in USD
-  final Map<String, double> crypto;
-
-  /// Business config
-  final double spread;
-  final double feeRate;
-
-  final DateTime? updatedAt;
-
-  const RateSnapshot({
-    required this.fiat,
-    required this.usdtToTzs,
-    required this.crypto,
-    required this.spread,
-    required this.feeRate,
-    this.updatedAt,
-  });
-
-  factory RateSnapshot.fromFirestore(Map<String, dynamic> data) {
-    Map<String, double> parseMap(dynamic raw) {
-      if (raw == null) return {};
-      return (raw as Map<String, dynamic>).map(
-        (k, v) => MapEntry(k, (v as num).toDouble()),
-      );
-    }
-
-    final config = data['config'] as Map<String, dynamic>? ?? {};
-    final ts = data['updatedAt'];
-
-    return RateSnapshot(
-      fiat: parseMap(data['fiat']),
-      usdtToTzs: (data['usdtToTzs'] as num?)?.toDouble() ?? 2650.0,
-      crypto: parseMap(data['crypto']),
-      spread: (config['spread'] as num?)?.toDouble() ?? 0.015,
-      feeRate: (config['feeRate'] as num?)?.toDouble() ?? 0.01,
-      updatedAt: ts is Timestamp ? ts.toDate() : null,
+    // Patch AppRates so all existing code gets live values without changes
+    AppRates.applyLiveRates(
+      newUsdtToTzs: usdtToTzs,
+      newFiat: fiat,
+      newCrypto: crypto,
+      newSpread: spread,
+      newFeeRate: feeRate,
     );
+
+    final snap = RateSnapshot(
+      usdtToTzs: usdtToTzs,
+      spread: spread,
+      feeRate: feeRate,
+      fiat: fiat,
+      crypto: crypto,
+      updatedAt: DateTime.now(),
+    );
+
+    _latest = snap;
+    _controller.add(snap);
   }
 
-  /// Convenience: 1 fiat currency → USDT after spread
-  double fiatToUsdt(String currency, double amount) {
-    if (currency == 'USDT') return amount * (1 - spread);
-    final rate = fiat[currency] ?? 1.0;
-    return amount * rate * (1 - spread);
+  void _onError(Object e) {
+    // Silently log — fallback rates in AppRates are still used
+    // ignore: avoid_print
+    print('[ExchangeRateService] Firestore error: $e');
   }
-
-  /// Convenience: USDT → TZS (receive side, no extra spread here)
-  double usdtToTzsAmount(double usdt) => usdt * usdtToTzs;
-
-  /// Full send path: fiat/USDT → TZS received
-  double toTzs(String currency, double amount) =>
-      usdtToTzsAmount(fiatToUsdt(currency, amount));
 }
 
-// ─── Error type ────────────────────────────────────────────────────────────
-class ExchangeRateError implements Exception {
-  final String message;
-  const ExchangeRateError(this.message);
-  @override
-  String toString() => 'ExchangeRateError: $message';
+// ── Stream extension to emit a seed value immediately ─────────────────────────
+extension _StartWith<T> on Stream<T> {
+  Stream<T> startWithValue(T value) async* {
+    yield value;
+    yield* this;
+  }
 }

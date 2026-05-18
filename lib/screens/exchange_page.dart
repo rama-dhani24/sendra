@@ -13,7 +13,12 @@ class ExchangePage extends StatefulWidget {
 }
 
 class _ExchangePageState extends State<ExchangePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // AutomaticKeepAliveClientMixin — keeps this tab alive in IndexedStack
+  // so it doesn't re-subscribe to Firestore every time user switches tabs
+  @override
+  bool get wantKeepAlive => true;
+
   late TabController _tabCtrl;
 
   @override
@@ -30,9 +35,10 @@ class _ExchangePageState extends State<ExchangePage>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
+
     final l = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? SColors.bg : SColors.lightBg;
     final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
@@ -40,8 +46,11 @@ class _ExchangePageState extends State<ExchangePage>
     final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
 
+    // Single StreamBuilder at the top level — child tabs read AppRates directly
+    // (already patched by the service) instead of each subscribing separately
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
+      initialData: ExchangeRateService.instance.latest, // show cached instantly
       builder: (context, snapshot) {
         final isLive = snapshot.hasData;
         final updatedAt = snapshot.data?.updatedAt;
@@ -50,7 +59,7 @@ class _ExchangePageState extends State<ExchangePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header ───────────────────────────────────────────────
+              // ── Header ──────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                 child: Row(
@@ -64,47 +73,52 @@ class _ExchangePageState extends State<ExchangePage>
                       ),
                     ),
                     const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isLive
-                            ? SColors.green.withOpacity(0.12)
-                            : cardColor,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: isLive
-                              ? SColors.green.withOpacity(0.3)
-                              : borderColor,
+                    // Live badge
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 400),
+                      child: Container(
+                        key: ValueKey<bool>(isLive),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: isLive ? SColors.green : textDim,
-                              shape: BoxShape.circle,
-                            ),
+                        decoration: BoxDecoration(
+                          color: isLive
+                              ? SColors.green.withOpacity(0.12)
+                              : cardColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isLive
+                                ? SColors.green.withOpacity(0.3)
+                                : borderColor,
                           ),
-                          const SizedBox(width: 5),
-                          Text(
-                            isLive
-                                ? (l.isSwahili ? 'Moja kwa moja' : 'Live')
-                                : (l.isSwahili
-                                      ? 'Inaunganisha...'
-                                      : 'Connecting...'),
-                            style: TextStyle(
-                              color: isLive ? SColors.green : textDim,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: isLive ? SColors.green : textDim,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 5),
+                            Text(
+                              isLive
+                                  ? (l.isSwahili ? 'Moja kwa moja' : 'Live')
+                                  : (l.isSwahili
+                                        ? 'Inaunganisha...'
+                                        : 'Connecting...'),
+                              style: TextStyle(
+                                color: isLive ? SColors.green : textDim,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -122,7 +136,7 @@ class _ExchangePageState extends State<ExchangePage>
 
               const SizedBox(height: 16),
 
-              // ── Tab bar ───────────────────────────────────────────────
+              // ── Tab bar ─────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Container(
@@ -163,6 +177,7 @@ class _ExchangePageState extends State<ExchangePage>
               Expanded(
                 child: TabBarView(
                   controller: _tabCtrl,
+                  // Each tab is kept alive — no re-init on tab switch
                   children: const [
                     _ConverterTab(),
                     _FxRatesTab(),
@@ -179,31 +194,31 @@ class _ExchangePageState extends State<ExchangePage>
 
   String _timeAgo(DateTime dt, AppLocalizations l) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) {
-      return l.isSwahili ? 'sasa hivi' : 'just now';
-    }
-    if (diff.inMinutes < 60) {
+    if (diff.inMinutes < 1) return l.isSwahili ? 'sasa hivi' : 'just now';
+    if (diff.inMinutes < 60)
       return l.isSwahili
           ? 'dakika ${diff.inMinutes} zilizopita'
           : '${diff.inMinutes}m ago';
-    }
     return l.isSwahili
         ? 'masaa ${diff.inHours} yaliyopita'
         : '${diff.inHours}h ago';
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 // Tab 1 — Converter
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 class _ConverterTab extends StatefulWidget {
   const _ConverterTab();
-
   @override
   State<_ConverterTab> createState() => _ConverterTabState();
 }
 
-class _ConverterTabState extends State<_ConverterTab> {
+class _ConverterTabState extends State<_ConverterTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   static const _fiat = ['GBP', 'EUR', 'USD', 'USDT', 'TZS'];
   static const _crypto = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE'];
   static const _all = [..._fiat, ..._crypto];
@@ -220,20 +235,18 @@ class _ConverterTabState extends State<_ConverterTab> {
     super.dispose();
   }
 
-  void _calculate() {
-    final amount = double.tryParse(_ctrl.text.trim()) ?? 0;
-    setState(() => _result = AppRates.convert(_from, _to, amount));
-  }
+  double get _amount => double.tryParse(_ctrl.text.trim()) ?? 0;
 
-  void _swap() {
-    setState(() {
-      final tmp = _from;
-      _from = _to;
-      _to = tmp;
-      _ctrl.clear();
-      _result = 0;
-    });
-  }
+  void _recalculate() =>
+      setState(() => _result = AppRates.convert(_from, _to, _amount));
+
+  void _swap() => setState(() {
+    final tmp = _from;
+    _from = _to;
+    _to = tmp;
+    _ctrl.clear();
+    _result = 0;
+  });
 
   String _fmt(double v) {
     if (v == 0) return '0';
@@ -245,16 +258,19 @@ class _ConverterTabState extends State<_ConverterTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final l = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final bordCol = isDark ? SColors.navyLight : SColors.lightBorder;
 
+    // Listen to rate updates and recalculate without rebuilding entire tree
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
-      builder: (context, _) {
-        final amount = double.tryParse(_ctrl.text.trim()) ?? 0;
-        if (amount > 0) _result = AppRates.convert(_from, _to, amount);
+      initialData: ExchangeRateService.instance.latest,
+      builder: (ctx, _) {
+        // Recalculate with fresh rates silently
+        if (_amount > 0) _result = AppRates.convert(_from, _to, _amount);
         final rate1 = AppRates.convert(_from, _to, 1.0);
 
         return ListView(
@@ -268,9 +284,9 @@ class _ConverterTabState extends State<_ConverterTab> {
               allCurrencies: _all,
               onCurrencyChanged: (c) => setState(() {
                 _from = c;
-                _calculate();
+                _recalculate();
               }),
-              onAmountChanged: (_) => _calculate(),
+              onAmountChanged: (_) => _recalculate(),
             ),
             const SizedBox(height: 12),
 
@@ -306,12 +322,12 @@ class _ConverterTabState extends State<_ConverterTab> {
               allCurrencies: _all,
               onCurrencyChanged: (c) => setState(() {
                 _to = c;
-                _calculate();
+                _recalculate();
               }),
             ),
             const SizedBox(height: 20),
 
-            if (amount > 0 && _result > 0)
+            if (_amount > 0 && _result > 0)
               _RatePill(
                 from: _from,
                 to: _to,
@@ -334,11 +350,7 @@ class _ConverterTabState extends State<_ConverterTab> {
                   },
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
-                      color: _copied
-                          ? SColors.green
-                          : isDark
-                          ? SColors.navyLight
-                          : SColors.lightBorder,
+                      color: _copied ? SColors.green : bordCol,
                       width: 1,
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -353,7 +365,7 @@ class _ConverterTabState extends State<_ConverterTab> {
                   ),
                   label: Text(
                     _copied
-                        ? (l.copied)
+                        ? l.copied
                         : (l.isSwahili ? 'Nakili Matokeo' : 'Copy Result'),
                     style: TextStyle(
                       color: _copied ? SColors.green : textSub,
@@ -372,27 +384,25 @@ class _ConverterTabState extends State<_ConverterTab> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 // Tab 2 — FX Rates
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 class _FxRatesTab extends StatelessWidget {
   const _FxRatesTab();
-
   static const _fiats = ['GBP', 'EUR', 'USD', 'USDT'];
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
 
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
-      builder: (context, snap) {
-        final rates = snap.data;
-        final spread = rates?.spread ?? AppRates.spread;
+      initialData: ExchangeRateService.instance.latest,
+      builder: (ctx, snap) {
+        final spread = snap.data?.spread ?? AppRates.spread;
         final spreadPct = (spread * 100).toStringAsFixed(1);
 
         return ListView(
@@ -508,24 +518,24 @@ class _FxRatesTab extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 // Tab 3 — Crypto
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 class _CryptoTab extends StatelessWidget {
   const _CryptoTab();
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
 
     return StreamBuilder<RateSnapshot>(
       stream: ExchangeRateService.instance.stream,
-      builder: (context, snap) {
+      initialData: ExchangeRateService.instance.latest,
+      builder: (ctx, snap) {
         final isLive = snap.hasData;
         final cryptos = AppRates.cryptoPriceUsd.keys.toList();
 
@@ -558,17 +568,15 @@ class _CryptoTab extends StatelessWidget {
               ),
 
             if (isLive)
-              ...cryptos.map((symbol) {
-                final usdPrice = AppRates.cryptoPriceUsd[symbol] ?? 0;
-                final tzsPrice = AppRates.convert(symbol, 'TZS', 1.0);
-                return _CryptoRow(
-                  symbol: symbol,
-                  name: AppRates.currencyNames[symbol] ?? symbol,
-                  flag: AppRates.currencyFlags[symbol] ?? symbol[0],
-                  usd: usdPrice,
-                  tzs: tzsPrice,
-                );
-              }),
+              ...cryptos.map(
+                (s) => _CryptoRow(
+                  symbol: s,
+                  name: AppRates.currencyNames[s] ?? s,
+                  flag: AppRates.currencyFlags[s] ?? s[0],
+                  usd: AppRates.cryptoPriceUsd[s] ?? 0,
+                  tzs: AppRates.convert(s, 'TZS', 1.0),
+                ),
+              ),
 
             const SizedBox(height: 16),
             Container(
@@ -610,9 +618,9 @@ class _CryptoTab extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 // Shared sub-widgets
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 
 class _CurrencyInputCard extends StatelessWidget {
   final String label, currency;
@@ -632,11 +640,11 @@ class _CurrencyInputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
     final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
 
     return Container(
@@ -652,7 +660,7 @@ class _CurrencyInputCard extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: isDark ? SColors.textSub : SColors.lightTextSub,
+              color: textSub,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -731,10 +739,9 @@ class _CurrencyOutputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
+    final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -809,10 +816,10 @@ class _CurrencyPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final flag = AppRates.currencyFlags[currency] ?? currency[0];
     final isCrypto = AppRates.isCrypto(currency);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -884,19 +891,18 @@ class _RatePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
-    final borderColor = isDark ? SColors.navyBorder : SColors.lightBorder;
-    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
     final l = AppLocalizations.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
+    final bordColor = isDark ? SColors.navyBorder : SColors.lightBorder;
+    final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: borderColor),
+        border: Border.all(color: bordColor),
       ),
       child: Row(
         children: [
@@ -944,8 +950,7 @@ class _QuickConversions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
     final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
@@ -1041,8 +1046,7 @@ class _CurrencyPickerSheetState extends State<_CurrencyPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? SColors.navy : SColors.lightBg;
     final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
@@ -1221,8 +1225,7 @@ class _FxRateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
     final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
@@ -1287,8 +1290,7 @@ class _CrossRateGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
     final textSub = isDark ? SColors.textSub : SColors.lightTextSub;
@@ -1296,11 +1298,9 @@ class _CrossRateGrid extends StatelessWidget {
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
 
     final pairs = <({String from, String to})>[];
-    for (int i = 0; i < currencies.length; i++) {
-      for (int j = i + 1; j < currencies.length; j++) {
+    for (int i = 0; i < currencies.length; i++)
+      for (int j = i + 1; j < currencies.length; j++)
         pairs.add((from: currencies[i], to: currencies[j]));
-      }
-    }
 
     return Column(
       children: pairs.map((p) {
@@ -1364,13 +1364,11 @@ class _CryptoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? SColors.navyCard : SColors.lightCard;
     final borderColor = isDark ? SColors.navyLight : SColors.lightBorder;
     final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
-
     final usdStr = usd >= 1
         ? '\$${Validators.formatNumber(usd)}'
         : '\$${usd.toStringAsFixed(4)}';
@@ -1453,8 +1451,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final textPrimary = isDark ? SColors.textPrimary : SColors.lightTextPrimary;
     final textDim = isDark ? SColors.textDim : SColors.lightTextDim;
 

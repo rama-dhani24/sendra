@@ -864,8 +864,8 @@ class _HomeScreenState extends State<HomeScreen>
               Filter(TxKeys.receiverId, isEqualTo: widget.userId),
             ),
           )
-          .orderBy(TxKeys.createdAt, descending: true)
-          .limit(10)
+          // ⚠️ No .orderBy here — orderBy drops docs missing createdAt,
+          // causing the flash-and-disappear bug. Sort client-side instead.
           .snapshots(),
       builder: (ctx, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
@@ -880,8 +880,23 @@ class _HomeScreenState extends State<HomeScreen>
           );
         }
 
-        final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) {
+        // Sort client-side descending by createdAt (nulls go last)
+        final docs = List<QueryDocumentSnapshot>.from(snap.data?.docs ?? [])
+          ..sort((a, b) {
+            final aTs =
+                (a.data() as Map<String, dynamic>)[TxKeys.createdAt]
+                    as Timestamp?;
+            final bTs =
+                (b.data() as Map<String, dynamic>)[TxKeys.createdAt]
+                    as Timestamp?;
+            if (aTs == null && bTs == null) return 0;
+            if (aTs == null) return 1;
+            if (bTs == null) return -1;
+            return bTs.compareTo(aTs);
+          });
+        // Keep only the 10 most recent
+        final limited = docs.length > 10 ? docs.sublist(0, 10) : docs;
+        if (limited.isEmpty) {
           return Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
             child: Container(
@@ -902,7 +917,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
 
         return Column(
-          children: docs.map((doc) {
+          children: limited.map((doc) {
             final data = doc.data()! as Map<String, dynamic>;
             final isSender = data[TxKeys.senderId] == widget.userId;
             final amount = (data[TxKeys.amountTzs] as num?)?.toDouble() ?? 0;
