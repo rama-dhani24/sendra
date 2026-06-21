@@ -406,34 +406,6 @@ class _BankTransferPageState extends State<BankTransferPage> {
                   child: Text(l.transferNow, style: SButton.primaryLabel),
                 ),
               ),
-
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: SColors.gold.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: SColors.gold.withOpacity(0.2)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.schedule_outlined,
-                      color: SColors.gold,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        l.isSwahili
-                            ? 'Uhamisho wa benki huchukua siku 1-3 za kazi. Ada ya TZS 2,000 inatumika.'
-                            : 'Bank transfers take 1-3 business days. TZS 2,000 flat fee applies.',
-                        style: TextStyle(color: textSub, fontSize: 11),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),

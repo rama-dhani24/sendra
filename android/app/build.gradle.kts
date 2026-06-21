@@ -1,4 +1,3 @@
-
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
@@ -9,7 +8,6 @@ plugins {
 android {
     namespace = "com.example.sendra"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "30.0.14904198"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

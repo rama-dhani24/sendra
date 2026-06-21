@@ -366,34 +366,6 @@ class _WithdrawPageState extends State<WithdrawPage> {
                       : Text(l.withdrawNow, style: SButton.primaryLabel),
                 ),
               ),
-
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: SColors.gold.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: SColors.gold.withOpacity(0.2)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: SColors.gold,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        l.isSwahili
-                            ? 'Kutoa pesa huchukua dakika 1-5. Inapatikana masaa 24/7.'
-                            : 'Withdrawals are processed within 1-5 minutes. Available 24/7.',
-                        style: TextStyle(color: textSub, fontSize: 11),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),
